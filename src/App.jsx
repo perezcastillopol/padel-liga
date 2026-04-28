@@ -4,6 +4,7 @@ import { LigaProvider } from './context/LigaContext'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import Login from './pages/Login'
 import MisLigas from './pages/MisLigas'
+import LigaLayout from './pages/liga/LigaLayout'
 
 function App() {
   return (
@@ -16,6 +17,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <MisLigas />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/liga/:id"
+            element={
+              <ProtectedRoute>
+                <LigaLayout />
               </ProtectedRoute>
             }
           />

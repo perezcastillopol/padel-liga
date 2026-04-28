@@ -94,6 +94,23 @@ src/
 | activo | BOOLEAN | default true |
 | fecha_union | TIMESTAMPTZ | default now() |
 
+### Tabla: liga_jugadores
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| id | UUID PK | gen_random_uuid() |
+| liga_id | UUID FK | → ligas.id |
+| nombre | TEXT | NOT NULL |
+| usuario_id | UUID FK | nullable → usuarios.id (null si no tiene cuenta) |
+| activo | BOOLEAN | default true |
+| created_at | TIMESTAMPTZ | default now() |
+
+### Concepto clave: Jugador vs Usuario
+- **usuario** → persona con cuenta de Google (auth)
+- **liga_jugador** → entidad del ranking de una liga
+- Un jugador puede existir sin usuario (añadido por el admin manualmente)
+- Un usuario se vincula a un jugador al entrar por primera vez a la liga
+- Un usuario puede ser jugador en varias ligas simultáneamente
+
 ### Tabla: temporadas
 | Columna | Tipo | Notas |
 |---------|------|-------|
@@ -171,17 +188,19 @@ src/
 - [x] Auth con Google configurado y funcionando
 - [x] Estructura de carpetas y archivos base
 - [x] Login con Google funcionando
-- [ ] Páginas y componentes
+- [x] Páginas y componentes: MisLigas + flujo crear/unirse a liga
 
 ## Próximos Pasos
 1. ✅ Crear estructura base y auth con Google
-2. Implementar flujo: crear liga / unirse con código
-3. Construir página Mis Ligas
-4. Construir páginas por liga: Clasificación → Partidos → Mi Perfil → Configuración
+2. ✅ Implementar flujo: crear liga / unirse con código + página Mis Ligas
+3. Construir páginas por liga: Clasificación → Partidos → Mi Perfil → Configuración
 
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido
 - Gráfico de evolución del ranking
 - Sistema de temporadas con historial
 - Modo oscuro
+- Vinculación usuario↔jugador: modal al entrar a liga por primera vez
+  preguntando quién es el usuario de la lista de jugadores existentes,
+  con opción de añadirse como jugador nuevo
 
