@@ -81,6 +81,8 @@ src/
 | max_partidos | INT | nullable (sin límite si null) |
 | criterio_seleccion | ENUM | 'mas_recientes', 'mejores_resultados', 'descartar_peores' |
 | created_at | TIMESTAMPTZ | default now() |
+| metodo_ranking | ENUM | 'puntos_totales', 'media_puntos', 'ratio_sets', 'media_puntos_minimo' |
+| min_partidos_ranking | INT | default 3, solo aplica cuando metodo_ranking = 'media_puntos_minimo' |
 
 ### Tabla: liga_miembros
 | Columna | Tipo | Notas |
@@ -137,6 +139,8 @@ src/
     * mas_recientes: los últimos N partidos
     * mejores_resultados: los N partidos con más puntos
     * descartar_peores: de los últimos N+5, descartar los 5 peores
+- Método de ranking: metodo_ranking (default puntos_totales)
+- Mínimo de partidos para aparecer en ranking: min_partidos_ranking (default 3, solo para media_puntos_minimo)
 
 ## Roles y permisos
 - **Admin de liga:** puede gestionar todos los partidos, miembros y configuración de su liga
