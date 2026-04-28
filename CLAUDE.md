@@ -166,23 +166,24 @@ src/
 - [x] Repo GitHub: https://github.com/perezcastillopol/padel-liga
 - [x] Proyecto Supabase creado
 - [x] Dependencias instaladas: @supabase/supabase-js, react-router-dom
-- [ ] CLAUDE.md creado
-- [ ] Schema de base de datos desplegado
-- [ ] Auth con Google configurado
-- [ ] Estructura de carpetas y archivos base
+- [x] CLAUDE.md creado
+- [x] Schema de base de datos desplegado
+- [x] Auth con Google configurado y funcionando
+- [x] Estructura de carpetas y archivos base
+- [x] Login con Google funcionando
 - [ ] Páginas y componentes
 
 ## Próximos Pasos
-1. Crear CLAUDE.md en el proyecto
-2. Desplegar schema SQL en Supabase
-3. Configurar Auth con Google en Supabase
-4. Crear estructura de carpetas y archivos base (lib, services, context, pages)
-5. Implementar login con Google
-6. Implementar flujo: crear liga / unirse con código
-7. Construir páginas en orden: Clasificación → Partidos → Mi Perfil → Configuración
+1. ✅ Crear estructura base y auth con Google
+2. Implementar flujo: crear liga / unirse con código
+3. Construir página Mis Ligas
+4. Construir páginas por liga: Clasificación → Partidos → Mi Perfil → Configuración
 
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido
 - Gráfico de evolución del ranking
 - Sistema de temporadas con historial
 - Modo oscuro
+
+## Deuda Técnica
+- AuthContext.jsx usa .then() en getSession() en lugar de async/await (convención del proyecto)
