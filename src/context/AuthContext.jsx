@@ -9,11 +9,13 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getSession().then((s) => {
+    async function initSession() {
+      const s = await getSession()
       setSession(s)
       setUser(s?.user ?? null)
       setLoading(false)
-    })
+    }
+    initSession()
 
     const subscription = onAuthStateChange((s) => {
       setSession(s)

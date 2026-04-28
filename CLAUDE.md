@@ -185,5 +185,3 @@ src/
 - Sistema de temporadas con historial
 - Modo oscuro
 
-## Deuda Técnica
-- AuthContext.jsx usa .then() en getSession() en lugar de async/await (convención del proyecto)
