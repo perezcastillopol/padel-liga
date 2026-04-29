@@ -79,7 +79,7 @@ src/
 | pts_no_finalizado | NUMERIC | default 1.5 |
 | ventana_dias | INT | nullable (sin límite si null) |
 | max_partidos | INT | nullable (sin límite si null) |
-| criterio_seleccion | ENUM | 'mas_recientes', 'mejores_resultados', 'descartar_peores' |
+| criterio_seleccion | ENUM | 'mas_recientes', 'mejores_resultados', 'recientes_sin_peores' |
 | created_at | TIMESTAMPTZ | default now() |
 | metodo_ranking | ENUM | 'puntos_totales', 'media_puntos', 'ratio_sets', 'media_puntos_minimo' |
 | min_partidos_ranking | INT | default 3, solo aplica cuando metodo_ranking = 'media_puntos_minimo' |
@@ -194,13 +194,14 @@ src/
 - [x] Navegación interna de liga con barra inferior
 - [x] Diseño responsive mobile-first max-w-md
 - [x] Modal vinculación usuario↔jugador al entrar a liga
+- [x] Página Configuración: info liga, jugadores, puntuación, miembros
 
 ## Próximos Pasos
 1. ✅ Estructura base y auth con Google
 2. ✅ Página Mis Ligas: crear y unirse a ligas
 3. ✅ Navegación interna con barra inferior
 4. ✅ Modal vinculación usuario↔jugador
-5. Página Configuración (gestión de jugadores y ajustes de liga)
+5. ✅ Página Configuración
 6. Página Clasificación
 7. Página Partidos
 8. Página Mi Perfil

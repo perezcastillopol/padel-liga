@@ -88,6 +88,17 @@ export async function getMiRolEnLiga(ligaId, userId) {
   return data?.rol ?? null
 }
 
+export async function actualizarLiga(ligaId, datos) {
+  const { data, error } = await supabase
+    .from('ligas')
+    .update(datos)
+    .eq('id', ligaId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function unirseConCodigo(userId, codigo) {
   const { data: liga, error: ligaError } = await supabase
     .from('ligas')
