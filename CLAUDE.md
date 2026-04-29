@@ -189,11 +189,20 @@ src/
 - [x] Estructura de carpetas y archivos base
 - [x] Login con Google funcionando
 - [x] Páginas y componentes: MisLigas + flujo crear/unirse a liga
+- [x] Tailwind CSS + shadcn/ui instalado y configurado
+- [x] Página Mis Ligas: listar, crear, unirse con código
+- [x] Navegación interna de liga con barra inferior
+- [x] Diseño responsive mobile-first max-w-md
 
 ## Próximos Pasos
-1. ✅ Crear estructura base y auth con Google
-2. ✅ Implementar flujo: crear liga / unirse con código + página Mis Ligas
-3. Construir páginas por liga: Clasificación → Partidos → Mi Perfil → Configuración
+1. ✅ Estructura base y auth con Google
+2. ✅ Página Mis Ligas: crear y unirse a ligas
+3. ✅ Navegación interna con barra inferior
+4. Modal vinculación usuario↔jugador al entrar a liga
+5. Página Configuración (gestión de jugadores y ajustes de liga)
+6. Página Clasificación
+7. Página Partidos
+8. Página Mi Perfil
 
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido

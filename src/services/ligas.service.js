@@ -66,6 +66,28 @@ export async function crearLiga(userId, { nombre, descripcion, config = {} }) {
   return liga
 }
 
+export async function getLigaById(ligaId) {
+  const { data, error } = await supabase
+    .from('ligas')
+    .select('*')
+    .eq('id', ligaId)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function getMiRolEnLiga(ligaId, userId) {
+  const { data, error } = await supabase
+    .from('liga_miembros')
+    .select('rol')
+    .eq('liga_id', ligaId)
+    .eq('usuario_id', userId)
+    .eq('activo', true)
+    .maybeSingle()
+  if (error) throw error
+  return data?.rol ?? null
+}
+
 export async function unirseConCodigo(userId, codigo) {
   const { data: liga, error: ligaError } = await supabase
     .from('ligas')

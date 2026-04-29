@@ -4,6 +4,16 @@ import { useAuth } from '../context/AuthContext'
 import { useLiga } from '../context/LigaContext'
 import { getMisLigas, crearLiga, unirseConCodigo } from '../services/ligas.service'
 import { signOut } from '../services/auth.service'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from '@/components/ui/card'
 
 // ── Modal crear liga ──────────────────────────────────────────────────────────
 
@@ -41,13 +51,15 @@ function ModalCrearLiga({ onClose, onCreada }) {
   }
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
-        <h2 style={s.modalTitle}>Crear liga</h2>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-xl font-bold mb-5">Crear liga</h2>
         <form onSubmit={handleSubmit}>
-          <label style={s.label}>Nombre de la liga *</label>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            Nombre de la liga *
+          </label>
           <input
-            style={s.input}
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             placeholder="Mi liga de pádel"
@@ -55,9 +67,11 @@ function ModalCrearLiga({ onClose, onCreada }) {
             required
           />
 
-          <label style={s.label}>Descripción</label>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 mt-4">
+            Descripción
+          </label>
           <textarea
-            style={{ ...s.input, resize: 'vertical', minHeight: '72px' }}
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-y min-h-[72px]"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
             placeholder="Opcional"
@@ -65,32 +79,53 @@ function ModalCrearLiga({ onClose, onCreada }) {
 
           <button
             type="button"
-            style={s.toggleConfig}
+            className="mt-4 text-xs font-semibold text-gray-500 bg-transparent border-none cursor-pointer p-0"
             onClick={() => setConfigAbierta((v) => !v)}
           >
             {configAbierta ? '▲' : '▼'} Configuración inicial
           </button>
 
           {configAbierta && (
-            <div style={s.configSection}>
-              <label style={s.label}>Puntos por victoria</label>
-              <input style={s.inputSmall} type="number" min="0" step="0.5" value={ptsVictoria} onChange={(e) => setPtsVictoria(e.target.value)} />
-              <label style={s.label}>Puntos por derrota</label>
-              <input style={s.inputSmall} type="number" min="0" step="0.5" value={ptsDerrota} onChange={(e) => setPtsDerrota(e.target.value)} />
-              <label style={s.label}>Puntos por no finalizado</label>
-              <input style={s.inputSmall} type="number" min="0" step="0.5" value={ptsNoFinalizado} onChange={(e) => setPtsNoFinalizado(e.target.value)} />
+            <div className="bg-gray-50 rounded-lg px-3.5 py-3 mt-2.5 space-y-2">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Puntos por victoria</label>
+                <input
+                  className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
+                  type="number" min="0" step="0.5"
+                  value={ptsVictoria}
+                  onChange={(e) => setPtsVictoria(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Puntos por derrota</label>
+                <input
+                  className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
+                  type="number" min="0" step="0.5"
+                  value={ptsDerrota}
+                  onChange={(e) => setPtsDerrota(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Puntos por no finalizado</label>
+                <input
+                  className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
+                  type="number" min="0" step="0.5"
+                  value={ptsNoFinalizado}
+                  onChange={(e) => setPtsNoFinalizado(e.target.value)}
+                />
+              </div>
             </div>
           )}
 
-          {error && <p style={s.error}>{error}</p>}
+          {error && <p className="text-destructive text-sm mt-3">{error}</p>}
 
-          <div style={s.modalActions}>
-            <button type="button" style={s.btnSecondary} onClick={onClose} disabled={loading}>
+          <div className="flex gap-2 justify-end mt-5">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancelar
-            </button>
-            <button type="submit" style={s.btnPrimary} disabled={loading || !nombre.trim()}>
+            </Button>
+            <Button type="submit" disabled={loading || !nombre.trim()}>
               {loading ? 'Creando...' : 'Crear liga'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -110,19 +145,22 @@ function ModalCodigo({ liga, onClose }) {
   }
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={{ ...s.modal, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-        <h2 style={s.modalTitle}>¡Liga creada!</h2>
-        <p style={{ color: '#555', marginBottom: '8px' }}>
-          Comparte este código con los jugadores que quieras invitar a <strong>{liga.nombre}</strong>:
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-xl font-bold mb-2">¡Liga creada!</h2>
+        <p className="text-sm text-gray-500 mb-1">
+          Comparte este código con los jugadores que quieras invitar a{' '}
+          <strong className="text-gray-800">{liga.nombre}</strong>:
         </p>
-        <div style={s.codigoBox}>{liga.codigo_invitacion}</div>
-        <button style={s.btnCopiar} onClick={handleCopiar}>
+        <div className="text-3xl font-bold tracking-[0.5em] text-gray-900 bg-gray-100 rounded-xl py-4 px-6 my-4 inline-block w-full">
+          {liga.codigo_invitacion}
+        </div>
+        <Button variant="outline" className="w-full" onClick={handleCopiar}>
           {copiado ? '¡Copiado!' : 'Copiar código'}
-        </button>
-        <button style={{ ...s.btnPrimary, width: '100%', marginTop: '12px' }} onClick={onClose}>
+        </Button>
+        <Button className="w-full mt-2.5" onClick={onClose}>
           Entendido
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -151,27 +189,29 @@ function ModalUnirse({ onClose, onUnido }) {
   }
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
-        <h2 style={s.modalTitle}>Unirme con código</h2>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-xl font-bold mb-5">Unirme con código</h2>
         <form onSubmit={handleSubmit}>
-          <label style={s.label}>Código de invitación</label>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            Código de invitación
+          </label>
           <input
-            style={{ ...s.input, textTransform: 'uppercase', letterSpacing: '4px', fontSize: '20px', textAlign: 'center' }}
+            className="w-full px-3 py-3 text-xl font-bold text-center border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary uppercase tracking-[0.4em]"
             value={codigo}
             onChange={(e) => setCodigo(e.target.value.toUpperCase().slice(0, 6))}
             placeholder="XXXXXX"
             maxLength={6}
             autoFocus
           />
-          {error && <p style={s.error}>{error}</p>}
-          <div style={s.modalActions}>
-            <button type="button" style={s.btnSecondary} onClick={onClose} disabled={loading}>
+          {error && <p className="text-destructive text-sm mt-3">{error}</p>}
+          <div className="flex gap-2 justify-end mt-5">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancelar
-            </button>
-            <button type="submit" style={s.btnPrimary} disabled={loading || codigo.length !== 6}>
+            </Button>
+            <Button type="submit" disabled={loading || codigo.length !== 6}>
               {loading ? 'Uniéndome...' : 'Unirme'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -183,23 +223,28 @@ function ModalUnirse({ onClose, onUnido }) {
 
 function LigaCard({ liga, onEntrar }) {
   return (
-    <div style={s.card}>
-      <div style={s.cardHeader}>
-        <h3 style={s.cardNombre}>{liga.nombre}</h3>
-        <span style={{ ...s.badge, ...(liga.rol === 'admin' ? s.badgeAdmin : s.badgeJugador) }}>
-          {liga.rol === 'admin' ? 'Admin' : 'Jugador'}
+    <Card className="hover:shadow-md transition-shadow">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-base">{liga.nombre}</CardTitle>
+          <Badge variant={liga.rol === 'admin' ? 'default' : 'secondary'}>
+            {liga.rol === 'admin' ? 'Admin' : 'Jugador'}
+          </Badge>
+        </div>
+        {liga.descripcion && (
+          <CardDescription>{liga.descripcion}</CardDescription>
+        )}
+      </CardHeader>
+      <CardFooter className="justify-between">
+        <span className="text-xs text-muted-foreground">
+          {liga.num_miembros ?? '—'}{' '}
+          {liga.num_miembros === 1 ? 'miembro' : 'miembros'}
         </span>
-      </div>
-      {liga.descripcion && <p style={s.cardDescripcion}>{liga.descripcion}</p>}
-      <div style={s.cardFooter}>
-        <span style={s.miembros}>
-          {liga.num_miembros ?? '—'} {liga.num_miembros === 1 ? 'miembro' : 'miembros'}
-        </span>
-        <button style={s.btnEntrar} onClick={() => onEntrar(liga)}>
+        <Button size="sm" onClick={() => onEntrar(liga)}>
           Entrar →
-        </button>
-      </div>
-    </div>
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }
 
@@ -209,20 +254,35 @@ function FAB({ onCrear, onUnirse }) {
   const [abierto, setAbierto] = useState(false)
 
   return (
-    <div style={s.fabContainer}>
-      {abierto && (
-        <>
-          <button style={s.fabOption} onClick={() => { setAbierto(false); onCrear() }}>
-            Crear liga
-          </button>
-          <button style={s.fabOption} onClick={() => { setAbierto(false); onUnirse() }}>
-            Unirme con código
-          </button>
-        </>
-      )}
-      <button style={s.fab} onClick={() => setAbierto((v) => !v)}>
-        {abierto ? '✕' : '+'}
-      </button>
+    <div className="fixed inset-x-0 bottom-0 h-0 pointer-events-none z-40">
+      <div className="max-w-md mx-auto h-0 relative">
+        <div className="absolute bottom-6 right-6 pointer-events-auto flex flex-col items-end gap-2.5">
+          {abierto && (
+            <>
+              <Button
+                variant="secondary"
+                className="shadow-md whitespace-nowrap"
+                onClick={() => { setAbierto(false); onCrear() }}
+              >
+                Crear liga
+              </Button>
+              <Button
+                variant="secondary"
+                className="shadow-md whitespace-nowrap"
+                onClick={() => { setAbierto(false); onUnirse() }}
+              >
+                Unirme con código
+              </Button>
+            </>
+          )}
+          <Button
+            className="size-14 rounded-full text-2xl font-light shadow-xl"
+            onClick={() => setAbierto((v) => !v)}
+          >
+            {abierto ? '✕' : '+'}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -287,31 +347,41 @@ export default function MisLigas() {
   }
 
   if (loading) {
-    return <div style={s.centered}><p>Cargando...</p></div>
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <p className="text-muted-foreground">Cargando...</p>
+      </div>
+    )
   }
 
   return (
-    <div style={s.page}>
-      {/* Header */}
-      <header style={s.header}>
-        <h1 style={s.headerTitle}>Mis ligas</h1>
-        <button style={s.btnSignOut} onClick={handleSignOut}>Cerrar sesión</button>
+    <div className="min-h-svh bg-gray-50">
+      <header className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm">
+        <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
+          <h1 className="text-xl font-bold text-gray-900">Mis ligas</h1>
+          <Button variant="outline" size="sm" onClick={handleSignOut}>
+            Cerrar sesión
+          </Button>
+        </div>
       </header>
 
-      {/* Contenido */}
-      <main style={s.main}>
-        {error && <p style={s.error}>{error}</p>}
+      <main className="max-w-md mx-auto px-4 py-6">
+        {error && <p className="text-destructive text-sm mb-4">{error}</p>}
 
         {ligas.length === 0 ? (
-          <div style={s.empty}>
-            <p style={s.emptyText}>Aún no formas parte de ninguna liga</p>
-            <div style={s.emptyActions}>
-              <button style={s.btnPrimary} onClick={() => setModal('crear')}>Crear liga</button>
-              <button style={s.btnSecondary} onClick={() => setModal('unirse')}>Unirme con código</button>
+          <div className="text-center mt-20">
+            <p className="text-base text-gray-400 mb-6">
+              Aún no formas parte de ninguna liga
+            </p>
+            <div className="flex gap-3 justify-center flex-wrap">
+              <Button onClick={() => setModal('crear')}>Crear liga</Button>
+              <Button variant="outline" onClick={() => setModal('unirse')}>
+                Unirme con código
+              </Button>
             </div>
           </div>
         ) : (
-          <div style={s.grid}>
+          <div className="flex flex-col gap-4">
             {ligas.map((liga) => (
               <LigaCard key={liga.id} liga={liga} onEntrar={handleEntrar} />
             ))}
@@ -319,12 +389,10 @@ export default function MisLigas() {
         )}
       </main>
 
-      {/* FAB solo cuando hay ligas */}
       {ligas.length > 0 && (
         <FAB onCrear={() => setModal('crear')} onUnirse={() => setModal('unirse')} />
       )}
 
-      {/* Modales */}
       {modal === 'crear' && (
         <ModalCrearLiga onClose={() => setModal(null)} onCreada={handleLigaCreada} />
       )}
@@ -336,112 +404,4 @@ export default function MisLigas() {
       )}
     </div>
   )
-}
-
-// ── Estilos ───────────────────────────────────────────────────────────────────
-
-const s = {
-  page: { minHeight: '100vh', backgroundColor: '#f5f5f5', fontFamily: 'system-ui, sans-serif' },
-  centered: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '16px 24px', backgroundColor: '#fff', borderBottom: '1px solid #eee',
-    position: 'sticky', top: 0, zIndex: 10,
-  },
-  headerTitle: { margin: 0, fontSize: '20px', fontWeight: '700' },
-  btnSignOut: {
-    padding: '6px 14px', fontSize: '13px', cursor: 'pointer',
-    border: '1px solid #ddd', borderRadius: '6px', backgroundColor: '#fff', color: '#555',
-  },
-
-  main: { maxWidth: '800px', margin: '0 auto', padding: '24px 16px' },
-
-  empty: { textAlign: 'center', marginTop: '80px' },
-  emptyText: { fontSize: '16px', color: '#888', marginBottom: '24px' },
-  emptyActions: { display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' },
-
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' },
-
-  card: {
-    backgroundColor: '#fff', borderRadius: '12px', padding: '20px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '8px',
-  },
-  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' },
-  cardNombre: { margin: 0, fontSize: '16px', fontWeight: '600', color: '#111' },
-  cardDescripcion: { margin: 0, fontSize: '13px', color: '#777', flex: 1 },
-  cardFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' },
-  miembros: { fontSize: '13px', color: '#999' },
-
-  badge: { padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' },
-  badgeAdmin: { backgroundColor: '#EEF2FF', color: '#4F46E5' },
-  badgeJugador: { backgroundColor: '#F0FDF4', color: '#16A34A' },
-
-  btnEntrar: {
-    padding: '6px 14px', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
-    border: 'none', borderRadius: '6px', backgroundColor: '#111', color: '#fff',
-  },
-  btnPrimary: {
-    padding: '10px 20px', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
-    border: 'none', borderRadius: '8px', backgroundColor: '#111', color: '#fff',
-  },
-  btnSecondary: {
-    padding: '10px 20px', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
-    border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#fff', color: '#333',
-  },
-
-  // FAB
-  fabContainer: { position: 'fixed', bottom: '24px', right: '24px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px' },
-  fab: {
-    width: '52px', height: '52px', borderRadius: '50%', fontSize: '24px', fontWeight: '300',
-    border: 'none', backgroundColor: '#111', color: '#fff', cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-  fabOption: {
-    padding: '10px 18px', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
-    border: 'none', borderRadius: '8px', backgroundColor: '#fff', color: '#111',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.12)', whiteSpace: 'nowrap',
-  },
-
-  // Modales
-  overlay: {
-    position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px',
-  },
-  modal: {
-    backgroundColor: '#fff', borderRadius: '16px', padding: '28px 24px',
-    width: '100%', maxWidth: '420px', boxShadow: '0 8px 32px rgba(0,0,0,0.16)',
-  },
-  modalTitle: { margin: '0 0 20px', fontSize: '20px', fontWeight: '700' },
-  modalActions: { display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' },
-
-  label: { display: 'block', fontSize: '13px', fontWeight: '600', color: '#555', marginBottom: '6px', marginTop: '14px' },
-  input: {
-    width: '100%', padding: '10px 12px', fontSize: '15px', boxSizing: 'border-box',
-    border: '1px solid #ddd', borderRadius: '8px', outline: 'none',
-  },
-  inputSmall: {
-    width: '80px', padding: '8px 10px', fontSize: '15px',
-    border: '1px solid #ddd', borderRadius: '8px', outline: 'none',
-  },
-
-  toggleConfig: {
-    marginTop: '14px', background: 'none', border: 'none', cursor: 'pointer',
-    color: '#555', fontSize: '13px', fontWeight: '600', padding: 0,
-  },
-  configSection: {
-    backgroundColor: '#f8f8f8', borderRadius: '8px', padding: '12px 14px', marginTop: '10px',
-  },
-
-  codigoBox: {
-    fontSize: '32px', fontWeight: '700', letterSpacing: '8px', color: '#111',
-    backgroundColor: '#f5f5f5', borderRadius: '10px', padding: '16px 24px',
-    margin: '16px auto', display: 'inline-block',
-  },
-  btnCopiar: {
-    marginTop: '8px', padding: '10px 20px', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
-    border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#fff', color: '#333', width: '100%',
-  },
-
-  error: { color: '#d32f2f', fontSize: '13px', marginTop: '10px', marginBottom: 0 },
 }

@@ -5,6 +5,10 @@ import ProtectedRoute from './components/layout/ProtectedRoute'
 import Login from './pages/Login'
 import MisLigas from './pages/MisLigas'
 import LigaLayout from './pages/liga/LigaLayout'
+import Clasificacion from './pages/liga/Clasificacion'
+import Partidos from './pages/liga/Partidos'
+import MiPerfil from './pages/liga/MiPerfil'
+import Configuracion from './pages/liga/Configuracion'
 
 function App() {
   return (
@@ -27,7 +31,13 @@ function App() {
                 <LigaLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route index element={<Navigate to="clasificacion" replace />} />
+            <Route path="clasificacion" element={<Clasificacion />} />
+            <Route path="partidos" element={<Partidos />} />
+            <Route path="perfil" element={<MiPerfil />} />
+            <Route path="config" element={<Configuracion />} />
+          </Route>
           <Route path="/" element={<Navigate to="/mis-ligas" replace />} />
         </Routes>
       </LigaProvider>
