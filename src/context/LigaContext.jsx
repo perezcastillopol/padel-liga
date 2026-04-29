@@ -4,9 +4,10 @@ const LigaContext = createContext(null)
 
 export function LigaProvider({ children }) {
   const [ligaActiva, setLigaActiva] = useState(null)
+  const [jugadorActual, setJugadorActual] = useState(null)
 
   return (
-    <LigaContext.Provider value={{ ligaActiva, setLigaActiva }}>
+    <LigaContext.Provider value={{ ligaActiva, setLigaActiva, jugadorActual, setJugadorActual }}>
       {children}
     </LigaContext.Provider>
   )

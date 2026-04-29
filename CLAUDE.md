@@ -193,12 +193,13 @@ src/
 - [x] Página Mis Ligas: listar, crear, unirse con código
 - [x] Navegación interna de liga con barra inferior
 - [x] Diseño responsive mobile-first max-w-md
+- [x] Modal vinculación usuario↔jugador al entrar a liga
 
 ## Próximos Pasos
 1. ✅ Estructura base y auth con Google
 2. ✅ Página Mis Ligas: crear y unirse a ligas
 3. ✅ Navegación interna con barra inferior
-4. Modal vinculación usuario↔jugador al entrar a liga
+4. ✅ Modal vinculación usuario↔jugador
 5. Página Configuración (gestión de jugadores y ajustes de liga)
 6. Página Clasificación
 7. Página Partidos

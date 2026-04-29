@@ -3,32 +3,47 @@ import { Outlet, NavLink, useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useLiga } from '../../context/LigaContext'
 import { getLigaById, getMiRolEnLiga } from '../../services/ligas.service'
+import { getMiJugador } from '../../services/jugadores.service'
 import { Button } from '@/components/ui/button'
+import ModalVinculacion from '../../components/liga/ModalVinculacion'
 
 export default function LigaLayout() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { ligaActiva, setLigaActiva } = useLiga()
+  const { ligaActiva, setLigaActiva, setJugadorActual } = useLiga()
 
   const [rol, setRol] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [mostrarModalVinculacion, setMostrarModalVinculacion] = useState(false)
 
   useEffect(() => {
+    setLoading(true)
+    setError(null)
+    setMostrarModalVinculacion(false)
+
     async function cargarLiga() {
       try {
         const needsFetch = !ligaActiva || ligaActiva.id !== id
         const liga = needsFetch ? await getLigaById(id) : ligaActiva
         if (needsFetch) setLigaActiva(liga)
-        const miRol = await getMiRolEnLiga(id, user.id)
+
+        const [miRol, miJugador] = await Promise.all([
+          getMiRolEnLiga(id, user.id),
+          getMiJugador(id, user.id),
+        ])
+
         setRol(miRol)
+        setJugadorActual(miJugador)
+        if (!miJugador) setMostrarModalVinculacion(true)
       } catch (err) {
         setError(err.message)
       } finally {
         setLoading(false)
       }
     }
+
     if (user) cargarLiga()
   }, [id, user])
 
@@ -98,6 +113,17 @@ export default function LigaLayout() {
           </NavLink>
         ))}
       </nav>
+
+      {mostrarModalVinculacion && (
+        <ModalVinculacion
+          ligaId={id}
+          userId={user.id}
+          onVinculado={(jugador) => {
+            setJugadorActual(jugador)
+            setMostrarModalVinculacion(false)
+          }}
+        />
+      )}
     </div>
   )
 }
