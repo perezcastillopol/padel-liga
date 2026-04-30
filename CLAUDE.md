@@ -198,6 +198,8 @@ src/
 - [x] Modal vinculación usuario↔jugador al entrar a liga
 - [x] Página Configuración: info liga, jugadores, puntuación, miembros
 - [x] Página Partidos: listar, crear, editar con permisos por pareja, eliminar
+- [x] Página Clasificación con sistema de ranking configurable
+- [x] Todas las combinaciones de ranking probadas y funcionando
 
 ## Próximos Pasos
 1. ✅ Estructura base y auth con Google
@@ -206,7 +208,7 @@ src/
 4. ✅ Modal vinculación usuario↔jugador
 5. ✅ Página Configuración
 6. ✅ Página Partidos
-7. Página Clasificación
+7. ✅ Página Clasificación
 8. Página Mi Perfil
 
 ## Mejoras Futuras

@@ -353,13 +353,13 @@ function SeccionPuntuacion({ liga, onGuardado }) {
       pts_victoria: liga.pts_victoria ?? 3,
       pts_derrota: liga.pts_derrota ?? 1,
       pts_no_finalizado: liga.pts_no_finalizado ?? 1.5,
-      ventana_dias: liga.ventana_dias ?? '',
-      max_partidos: liga.max_partidos ?? '',
+      ventana_dias: liga.ventana_dias != null ? String(liga.ventana_dias) : '',
+      max_partidos: liga.max_partidos != null ? String(liga.max_partidos) : '',
       criterio_seleccion: liga.criterio_seleccion ?? 'mas_recientes',
       metodo_ranking: liga.metodo_ranking ?? 'puntos_totales',
       min_partidos_ranking: liga.min_partidos_ranking ?? 3,
     })
-  }, [liga?.id])
+  }, [liga])
 
   function setField(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -670,13 +670,13 @@ export default function Configuracion() {
 
   return (
     <div className="space-y-4 pb-4">
-      <SeccionInfo liga={ligaActiva} onGuardado={setLigaActiva} />
+      <SeccionInfo key={`info-${ligaActiva.id}`} liga={ligaActiva} onGuardado={setLigaActiva} />
       <SeccionJugadores
         ligaId={ligaActiva.id}
         jugadores={jugadores}
         onCambio={setJugadores}
       />
-      <SeccionPuntuacion liga={ligaActiva} onGuardado={setLigaActiva} />
+      <SeccionPuntuacion key={`puntuacion-${ligaActiva.id}`} liga={ligaActiva} onGuardado={setLigaActiva} />
       <SeccionMiembros
         ligaId={ligaActiva.id}
         miembros={miembros}

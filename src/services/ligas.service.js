@@ -19,10 +19,15 @@ export async function getMisLigas(userId) {
         nombre,
         descripcion,
         codigo_invitacion,
+        temporadas_activas,
         pts_victoria,
         pts_derrota,
         pts_no_finalizado,
+        ventana_dias,
+        max_partidos,
+        criterio_seleccion,
         metodo_ranking,
+        min_partidos_ranking,
         created_at,
         liga_miembros(count)
       )
