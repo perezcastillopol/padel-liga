@@ -201,19 +201,15 @@ src/
 - [x] Página Clasificación con sistema de ranking configurable
 - [x] Todas las combinaciones de ranking probadas y funcionando
 - [x] Página Mi Perfil: resumen, compañeros, rivales, últimos partidos
+- [x] Variables de entorno configuradas (.env)
+- [x] Criterio de desempate en clasificación
+- [x] Fixes de accesibilidad en formularios
 
 ## Próximos Pasos
-1. ✅ Estructura base y auth con Google
-2. ✅ Página Mis Ligas: crear y unirse a ligas
-3. ✅ Navegación interna con barra inferior
-4. ✅ Modal vinculación usuario↔jugador
-5. ✅ Página Configuración
-6. ✅ Página Partidos
-7. ✅ Página Clasificación
-8. ✅ Página Mi Perfil
-9. Despliegue en Vercel
-10. Criterio de desempate en clasificación
-11. Importar partidos históricos del PDF
+1. ✅ Todas las páginas principales completadas
+2. Despliegue en Vercel
+3. Configurar variables de entorno en Vercel
+4. Añadir URL de producción a Supabase Auth
 
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido
