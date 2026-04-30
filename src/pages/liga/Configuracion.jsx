@@ -325,15 +325,15 @@ const CRITERIO_OPTS = [
 ]
 
 function getCriterioDescripcion(criterio, maxPartidos) {
-  const n = maxPartidos !== '' ? Number(maxPartidos) : null
-  const nStr = n !== null ? n : '—'
+  const n = maxPartidos !== '' && maxPartidos != null ? Number(maxPartidos) : null
+  if (n === null) return null
   switch (criterio) {
     case 'recientes_sin_peores':
-      return `Analiza los últimos ${n !== null ? n + 5 : '—'} partidos y descarta los 5 peores`
+      return `Analiza los últimos ${n + 5} partidos y descarta los 5 peores`
     case 'mejores_resultados':
-      return `De todos tus partidos cuenta solo los ${nStr} con mejor resultado`
+      return `De todos tus partidos cuenta solo los ${n} con mejor resultado`
     case 'mas_recientes':
-      return `Cuentan los ${nStr} partidos más recientes`
+      return `Cuentan los ${n} partidos más recientes`
     default:
       return null
   }
