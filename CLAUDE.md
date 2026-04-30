@@ -128,10 +128,10 @@ src/
 | liga_id | UUID FK | → ligas.id |
 | temporada_id | UUID FK | nullable → temporadas.id |
 | fecha | DATE | NOT NULL |
-| p1_jugador1_id | UUID FK | → usuarios.id |
-| p1_jugador2_id | UUID FK | → usuarios.id |
-| p2_jugador1_id | UUID FK | → usuarios.id |
-| p2_jugador2_id | UUID FK | → usuarios.id |
+| p1_jugador1_id | UUID FK | → liga_jugadores.id |
+| p1_jugador2_id | UUID FK | → liga_jugadores.id |
+| p2_jugador1_id | UUID FK | → liga_jugadores.id |
+| p2_jugador2_id | UUID FK | → liga_jugadores.id |
 | set1_p1 | INT | NOT NULL |
 | set1_p2 | INT | NOT NULL |
 | set2_p1 | INT | nullable |
@@ -140,6 +140,8 @@ src/
 | set3_p2 | INT | nullable |
 | resultado | ENUM | 'pareja1', 'pareja2', 'no_finalizado' |
 | creado_por | UUID FK | → usuarios.id |
+| editado_por_p1 | BOOLEAN | default false — true cuando la pareja 1 confirma los sets |
+| editado_por_p2 | BOOLEAN | default false — true cuando la pareja 2 confirma los sets |
 | created_at | TIMESTAMPTZ | default now() |
 
 ### Credenciales Supabase
@@ -195,6 +197,7 @@ src/
 - [x] Diseño responsive mobile-first max-w-md
 - [x] Modal vinculación usuario↔jugador al entrar a liga
 - [x] Página Configuración: info liga, jugadores, puntuación, miembros
+- [x] Página Partidos: listar, crear, editar con permisos por pareja, eliminar
 
 ## Próximos Pasos
 1. ✅ Estructura base y auth con Google
@@ -202,8 +205,8 @@ src/
 3. ✅ Navegación interna con barra inferior
 4. ✅ Modal vinculación usuario↔jugador
 5. ✅ Página Configuración
-6. Página Clasificación
-7. Página Partidos
+6. ✅ Página Partidos
+7. Página Clasificación
 8. Página Mi Perfil
 
 ## Mejoras Futuras
