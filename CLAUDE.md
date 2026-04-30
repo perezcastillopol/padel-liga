@@ -204,12 +204,16 @@ src/
 - [x] Variables de entorno configuradas (.env)
 - [x] Criterio de desempate en clasificación
 - [x] Fixes de accesibilidad en formularios
+- [x] PWA manifest configurado con iconos personalizados
+- [x] Desplegado en Vercel: https://padel-liga-eight.vercel.app
+- [x] Variables de entorno configuradas en Vercel
+- [x] Routing SPA configurado con vercel.json
 
 ## Próximos Pasos
 1. ✅ Todas las páginas principales completadas
-2. Despliegue en Vercel
-3. Configurar variables de entorno en Vercel
-4. Añadir URL de producción a Supabase Auth
+2. ✅ Despliegue en Vercel
+3. Compartir con el grupo para que se unan a la liga
+4. Pendiente: resultado de votación del sistema de puntos
 
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido
