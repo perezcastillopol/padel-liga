@@ -200,6 +200,7 @@ src/
 - [x] Página Partidos: listar, crear, editar con permisos por pareja, eliminar
 - [x] Página Clasificación con sistema de ranking configurable
 - [x] Todas las combinaciones de ranking probadas y funcionando
+- [x] Página Mi Perfil: resumen, compañeros, rivales, últimos partidos
 
 ## Próximos Pasos
 1. ✅ Estructura base y auth con Google
@@ -209,8 +210,10 @@ src/
 5. ✅ Página Configuración
 6. ✅ Página Partidos
 7. ✅ Página Clasificación
-8. Página Mi Perfil
-
+8. ✅ Página Mi Perfil
+9. Despliegue en Vercel
+10. Criterio de desempate en clasificación
+11. Importar partidos históricos del PDF
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido
 - Gráfico de evolución del ranking
