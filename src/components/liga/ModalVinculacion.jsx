@@ -120,8 +120,10 @@ export default function ModalVinculacion({ ligaId, userId, onVinculado }) {
 
             {/* Sección: nuevo jugador */}
             <form onSubmit={handleCrearNuevo} className="space-y-3">
-              <p className="text-sm font-semibold text-gray-700">Soy nuevo en esta liga</p>
+              <label htmlFor="vinculacion-nuevo-nombre" className="text-sm font-semibold text-gray-700">Soy nuevo en esta liga</label>
               <Input
+                id="vinculacion-nuevo-nombre"
+                name="vinculacion-nuevo-nombre"
                 placeholder="Tu nombre completo"
                 value={nuevoNombre}
                 onChange={(e) => setNuevoNombre(e.target.value)}

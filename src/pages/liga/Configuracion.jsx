@@ -108,11 +108,13 @@ function SeccionInfo({ liga, onGuardado }) {
       </CardHeader>
       <CardContent className="space-y-5">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+          <label htmlFor="liga-nombre" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
             Nombre
           </label>
           <div className="flex gap-2">
             <Input
+              id="liga-nombre"
+              name="liga-nombre"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               className="h-10"
@@ -130,10 +132,12 @@ function SeccionInfo({ liga, onGuardado }) {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+          <label htmlFor="liga-descripcion" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
             Descripción
           </label>
           <textarea
+            id="liga-descripcion"
+            name="liga-descripcion"
             className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-y min-h-[72px] mb-2"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
@@ -415,10 +419,12 @@ function SeccionPuntuacion({ liga, onGuardado }) {
             { field: 'pts_no_finalizado', label: 'No finalizado' },
           ].map(({ field, label }) => (
             <div key={field}>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              <label htmlFor={field} className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                 {label}
               </label>
               <Input
+                id={field}
+                name={field}
                 type="number"
                 min="0"
                 step="0.5"
@@ -434,10 +440,12 @@ function SeccionPuntuacion({ liga, onGuardado }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            <label htmlFor="ventana-dias" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Ventana (días)
             </label>
             <Input
+              id="ventana-dias"
+              name="ventana-dias"
               type="number"
               min="1"
               value={form.ventana_dias}
@@ -450,10 +458,12 @@ function SeccionPuntuacion({ liga, onGuardado }) {
             )}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            <label htmlFor="max-partidos" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Máx. partidos
             </label>
             <Input
+              id="max-partidos"
+              name="max-partidos"
               type="number"
               min="1"
               value={form.max_partidos}
@@ -508,10 +518,12 @@ function SeccionPuntuacion({ liga, onGuardado }) {
 
         {form.metodo_ranking === 'media_puntos_minimo' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            <label htmlFor="min-partidos-ranking" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Mínimo de partidos para el ranking
             </label>
             <Input
+              id="min-partidos-ranking"
+              name="min-partidos-ranking"
               type="number"
               min="1"
               value={form.min_partidos_ranking}

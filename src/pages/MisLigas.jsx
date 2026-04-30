@@ -55,10 +55,12 @@ function ModalCrearLiga({ onClose, onCreada }) {
       <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-5">Crear liga</h2>
         <form onSubmit={handleSubmit}>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+          <label htmlFor="crear-nombre" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
             Nombre de la liga *
           </label>
           <input
+            id="crear-nombre"
+            name="crear-nombre"
             className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
@@ -67,10 +69,12 @@ function ModalCrearLiga({ onClose, onCreada }) {
             required
           />
 
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 mt-4">
+          <label htmlFor="crear-descripcion" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 mt-4">
             Descripción
           </label>
           <textarea
+            id="crear-descripcion"
+            name="crear-descripcion"
             className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-y min-h-[72px]"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
@@ -88,8 +92,10 @@ function ModalCrearLiga({ onClose, onCreada }) {
           {configAbierta && (
             <div className="bg-gray-50 rounded-lg px-3.5 py-3 mt-2.5 space-y-2">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Puntos por victoria</label>
+                <label htmlFor="crear-pts-victoria" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por victoria</label>
                 <input
+                  id="crear-pts-victoria"
+                  name="crear-pts-victoria"
                   className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
                   type="number" min="0" step="0.5"
                   value={ptsVictoria}
@@ -97,8 +103,10 @@ function ModalCrearLiga({ onClose, onCreada }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Puntos por derrota</label>
+                <label htmlFor="crear-pts-derrota" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por derrota</label>
                 <input
+                  id="crear-pts-derrota"
+                  name="crear-pts-derrota"
                   className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
                   type="number" min="0" step="0.5"
                   value={ptsDerrota}
@@ -106,8 +114,10 @@ function ModalCrearLiga({ onClose, onCreada }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Puntos por no finalizado</label>
+                <label htmlFor="crear-pts-nf" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por no finalizado</label>
                 <input
+                  id="crear-pts-nf"
+                  name="crear-pts-nf"
                   className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
                   type="number" min="0" step="0.5"
                   value={ptsNoFinalizado}
@@ -193,10 +203,12 @@ function ModalUnirse({ onClose, onUnido }) {
       <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-5">Unirme con código</h2>
         <form onSubmit={handleSubmit}>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+          <label htmlFor="unirse-codigo" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
             Código de invitación
           </label>
           <input
+            id="unirse-codigo"
+            name="unirse-codigo"
             className="w-full px-3 py-3 text-xl font-bold text-center border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary uppercase tracking-[0.4em]"
             value={codigo}
             onChange={(e) => setCodigo(e.target.value.toUpperCase().slice(0, 6))}

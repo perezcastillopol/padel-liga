@@ -95,15 +95,15 @@ function setsDisplay(partido) {
 
 // ── Selects de jugador sin duplicados ────────────────────────────────────────
 
-function JugadorSelect({ label, value, onChange, jugadores, excluir = [], disabled }) {
+function JugadorSelect({ id, label, value, onChange, jugadores, excluir = [], disabled }) {
   const opciones = jugadores.filter((j) => !excluir.includes(j.id) || j.id === value)
   return (
     <div className="flex-1 min-w-0">
-      <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+      <label htmlFor={id} className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
         {label}
       </label>
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger className="h-9 text-sm">
+        <SelectTrigger id={id} className="h-9 text-sm">
           <SelectValue placeholder="Jugador..." />
         </SelectTrigger>
         <SelectContent>
@@ -120,14 +120,18 @@ function JugadorSelect({ label, value, onChange, jugadores, excluir = [], disabl
 
 // ── Input de set ──────────────────────────────────────────────────────────────
 
-function SetInput({ label, vP1, vP2, onP1, onP2, required }) {
+function SetInput({ id, label, vP1, vP2, onP1, onP2, required }) {
+  const idP1 = `${id}-p1`
+  const idP2 = `${id}-p2`
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+      <label htmlFor={idP1} className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
         {label}{required && ' *'}
       </label>
       <div className="flex items-center gap-2">
         <Input
+          id={idP1}
+          name={idP1}
           type="number"
           min="0"
           max="99"
@@ -138,6 +142,8 @@ function SetInput({ label, vP1, vP2, onP1, onP2, required }) {
         />
         <span className="text-gray-400 font-bold">-</span>
         <Input
+          id={idP2}
+          name={idP2}
           type="number"
           min="0"
           max="99"
@@ -217,10 +223,12 @@ function FormPartido({ jugadores, partidoEdit, soloSets, onGuardar, onCancelar, 
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Fecha */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+        <label htmlFor="partido-fecha" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
           Fecha
         </label>
         <Input
+          id="partido-fecha"
+          name="partido-fecha"
           type="date"
           value={form.fecha}
           onChange={(e) => set('fecha', e.target.value)}
@@ -235,6 +243,7 @@ function FormPartido({ jugadores, partidoEdit, soloSets, onGuardar, onCancelar, 
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pareja 1</p>
           <div className="flex gap-2">
             <JugadorSelect
+              id="jugador-p1j1"
               label="Jugador 1"
               value={form.p1j1}
               onChange={(v) => set('p1j1', v)}
@@ -243,6 +252,7 @@ function FormPartido({ jugadores, partidoEdit, soloSets, onGuardar, onCancelar, 
               disabled={soloSets}
             />
             <JugadorSelect
+              id="jugador-p1j2"
               label="Jugador 2"
               value={form.p1j2}
               onChange={(v) => set('p1j2', v)}
@@ -261,6 +271,7 @@ function FormPartido({ jugadores, partidoEdit, soloSets, onGuardar, onCancelar, 
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pareja 2</p>
           <div className="flex gap-2">
             <JugadorSelect
+              id="jugador-p2j1"
               label="Jugador 1"
               value={form.p2j1}
               onChange={(v) => set('p2j1', v)}
@@ -269,6 +280,7 @@ function FormPartido({ jugadores, partidoEdit, soloSets, onGuardar, onCancelar, 
               disabled={soloSets}
             />
             <JugadorSelect
+              id="jugador-p2j2"
               label="Jugador 2"
               value={form.p2j2}
               onChange={(v) => set('p2j2', v)}
@@ -284,17 +296,20 @@ function FormPartido({ jugadores, partidoEdit, soloSets, onGuardar, onCancelar, 
       <div className="space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sets</p>
         <SetInput
+          id="set1"
           label="Set 1"
           required
           vP1={form.set1p1} onP1={(v) => set('set1p1', v)}
           vP2={form.set1p2} onP2={(v) => set('set1p2', v)}
         />
         <SetInput
+          id="set2"
           label="Set 2"
           vP1={form.set2p1} onP1={(v) => set('set2p1', v)}
           vP2={form.set2p2} onP2={(v) => set('set2p2', v)}
         />
         <SetInput
+          id="set3"
           label="Set 3"
           vP1={form.set3p1} onP1={(v) => set('set3p1', v)}
           vP2={form.set3p2} onP2={(v) => set('set3p2', v)}

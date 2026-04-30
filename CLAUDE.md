@@ -214,6 +214,7 @@ src/
 9. Despliegue en Vercel
 10. Criterio de desempate en clasificación
 11. Importar partidos históricos del PDF
+
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido
 - Gráfico de evolución del ranking
