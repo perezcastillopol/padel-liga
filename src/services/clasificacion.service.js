@@ -138,6 +138,8 @@ export async function calcularClasificacion(ligaId, ligaConfig) {
       derrotas,
       noFinalizados,
       puntos,
+      setsGanados,
+      setsTotales,
       valorRanking,
       sinRanking,
       posicion: null,
@@ -147,7 +149,12 @@ export async function calcularClasificacion(ligaId, ligaConfig) {
   clasificacion.sort((a, b) => {
     if (a.sinRanking && !b.sinRanking) return 1
     if (!a.sinRanking && b.sinRanking) return -1
-    return (b.valorRanking ?? 0) - (a.valorRanking ?? 0)
+    if (b.valorRanking !== a.valorRanking) return (b.valorRanking ?? 0) - (a.valorRanking ?? 0)
+    if (b.victorias !== a.victorias) return b.victorias - a.victorias
+    if (a.derrotas !== b.derrotas) return a.derrotas - b.derrotas
+    const ratioA = a.setsTotales > 0 ? a.setsGanados / a.setsTotales : 0
+    const ratioB = b.setsTotales > 0 ? b.setsGanados / b.setsTotales : 0
+    return ratioB - ratioA
   })
 
   let pos = 1
