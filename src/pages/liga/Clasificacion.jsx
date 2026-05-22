@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLiga } from '../../context/LigaContext'
 import { calcularClasificacion } from '../../services/clasificacion.service'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +21,7 @@ function formatValor(valor, metodo) {
 
 export default function Clasificacion() {
   const { ligaActiva, jugadorActual } = useLiga()
+  const navigate = useNavigate()
   const [tabla, setTabla] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -56,6 +58,16 @@ export default function Clasificacion() {
 
   return (
     <div className="space-y-4 pb-4">
+      {/* Botón evolución */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => navigate(`/liga/${ligaActiva.id}/evolucion`)}
+          className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+        >
+          📈 Ver evolución
+        </button>
+      </div>
+
       {/* Chips informativos */}
       {(ligaActiva?.ventana_dias || ligaActiva?.max_partidos) && (
         <div className="flex flex-wrap gap-2">

@@ -9,6 +9,7 @@ import Clasificacion from './pages/liga/Clasificacion'
 import Partidos from './pages/liga/Partidos'
 import MiPerfil from './pages/liga/MiPerfil'
 import Configuracion from './pages/liga/Configuracion'
+import EvolucionRanking from './pages/liga/EvolucionRanking'
 
 function App() {
   return (
@@ -37,6 +38,7 @@ function App() {
             <Route path="partidos" element={<Partidos />} />
             <Route path="perfil" element={<MiPerfil />} />
             <Route path="config" element={<Configuracion />} />
+            <Route path="evolucion" element={<EvolucionRanking />} />
           </Route>
           <Route path="/" element={<Navigate to="/mis-ligas" replace />} />
         </Routes>
