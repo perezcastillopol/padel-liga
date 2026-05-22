@@ -1,5 +1,122 @@
 import { supabase } from '../lib/supabase'
 
+export async function getPartidosConEstado(ligaId, jugadorId, ligaConfig) {
+  const {
+    pts_victoria = 3,
+    pts_derrota = 1,
+    pts_no_finalizado = 1.5,
+    ventana_dias = null,
+    max_partidos = null,
+    criterio_seleccion = 'mas_recientes',
+  } = ligaConfig
+
+  const partidos = await getPartidosJugador(ligaId, jugadorId)
+
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+
+  function puntosParaJugador(partido) {
+    if (partido.resultado === 'no_finalizado') return Number(pts_no_finalizado)
+    const enP1 = partido.p1_jugador1_id === jugadorId || partido.p1_jugador2_id === jugadorId
+    if ((enP1 && partido.resultado === 'pareja1') || (!enP1 && partido.resultado === 'pareja2')) {
+      return Number(pts_victoria)
+    }
+    return Number(pts_derrota)
+  }
+
+  let limite = null
+  if (ventana_dias !== null) {
+    limite = new Date(hoy)
+    limite.setDate(limite.getDate() - ventana_dias)
+  }
+
+  const dentroVentana = []
+  const fueraVentana = []
+  for (const p of partidos) {
+    if (limite !== null && new Date(p.fecha) < limite) {
+      fueraVentana.push(p)
+    } else {
+      dentroVentana.push(p)
+    }
+  }
+
+  const result = []
+
+  if (max_partidos === null || dentroVentana.length <= max_partidos) {
+    for (const p of dentroVentana) {
+      result.push({ partido: p, computa: true, razonNoComputa: null })
+    }
+  } else {
+    switch (criterio_seleccion) {
+      case 'mas_recientes':
+        for (let i = 0; i < dentroVentana.length; i++) {
+          result.push({
+            partido: dentroVentana[i],
+            computa: i < max_partidos,
+            razonNoComputa: i < max_partidos ? null : 'Supera el máximo de partidos',
+          })
+        }
+        break
+
+      case 'mejores_resultados': {
+        const conPuntos = dentroVentana.map((p, i) => ({ i, puntos: puntosParaJugador(p) }))
+        const topIndices = new Set(
+          [...conPuntos].sort((a, b) => b.puntos - a.puntos).slice(0, max_partidos).map((x) => x.i)
+        )
+        for (let i = 0; i < dentroVentana.length; i++) {
+          result.push({
+            partido: dentroVentana[i],
+            computa: topIndices.has(i),
+            razonNoComputa: topIndices.has(i) ? null : 'No está entre los mejores resultados',
+          })
+        }
+        break
+      }
+
+      case 'recientes_sin_peores': {
+        const pool = dentroVentana.slice(0, max_partidos + 5)
+        const fueraPool = dentroVentana.slice(max_partidos + 5)
+
+        if (pool.length <= max_partidos) {
+          for (const p of pool) result.push({ partido: p, computa: true, razonNoComputa: null })
+        } else {
+          const conPuntos = pool.map((p, i) => ({ i, puntos: puntosParaJugador(p) }))
+          const peoresIndices = new Set(
+            [...conPuntos].sort((a, b) => a.puntos - b.puntos).slice(0, 5).map((x) => x.i)
+          )
+          for (let i = 0; i < pool.length; i++) {
+            result.push({
+              partido: pool[i],
+              computa: !peoresIndices.has(i),
+              razonNoComputa: peoresIndices.has(i) ? 'Descartado por ser uno de los peores resultados' : null,
+            })
+          }
+        }
+
+        for (const p of fueraPool) {
+          result.push({ partido: p, computa: false, razonNoComputa: 'Supera el máximo de partidos' })
+        }
+        break
+      }
+
+      default:
+        for (let i = 0; i < dentroVentana.length; i++) {
+          result.push({
+            partido: dentroVentana[i],
+            computa: i < max_partidos,
+            razonNoComputa: i < max_partidos ? null : 'Supera el máximo de partidos',
+          })
+        }
+    }
+  }
+
+  for (const p of fueraVentana) {
+    result.push({ partido: p, computa: false, razonNoComputa: 'Fuera de la ventana temporal' })
+  }
+
+  return result
+}
+
 export async function getPartidosJugador(ligaId, jugadorId) {
   const [{ data: partidos, error }, { data: jugadores }] = await Promise.all([
     supabase

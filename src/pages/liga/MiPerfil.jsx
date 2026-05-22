@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLiga } from '../../context/LigaContext'
 import { calcularClasificacion } from '../../services/clasificacion.service'
-import { getPartidosJugador, calcularEstadisticasPersonales } from '../../services/perfil.service'
+import { getPartidosConEstado, calcularEstadisticasPersonales } from '../../services/perfil.service'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
@@ -65,9 +65,16 @@ function formatValorRanking(valor, metodo) {
   return Number.isInteger(valor) ? String(valor) : valor.toFixed(1)
 }
 
+const RAZON_CORTA = {
+  'Fuera de la ventana temporal': 'Fuera de ventana',
+  'Supera el máximo de partidos': 'Máx. alcanzado',
+  'No está entre los mejores resultados': 'No el mejor',
+  'Descartado por ser uno de los peores resultados': 'Entre los peores',
+}
+
 // ── Mini-card de partido ──────────────────────────────────────────────────────
 
-function MiniPartidoCard({ partido, jugadorId }) {
+function MiniPartidoCard({ partido, jugadorId, computa = true, razonNoComputa = null }) {
   const res = resultadoParaJugador(partido, jugadorId)
   const colorClass = COLOR_FONDO[res]
   const p1 = [partido.p1j1?.nombre, partido.p1j2?.nombre].filter(Boolean).join(' / ')
@@ -75,24 +82,33 @@ function MiniPartidoCard({ partido, jugadorId }) {
   const { label, className } = resultadoBadge(partido)
 
   return (
-    <Card className={`border ${colorClass}`}>
-      <CardContent className="px-4 py-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-400 mb-1">{formatDate(partido.fecha)}</p>
-            <p className="text-sm font-semibold text-gray-900 truncate">
-              {p1} <span className="text-gray-400 font-normal">vs</span> {p2}
-            </p>
-            <p className="text-base font-bold text-gray-800 mt-1 tracking-wide">
-              {setsDisplay(partido)}
-            </p>
+    <div className={!computa ? 'opacity-40' : ''}>
+      <Card className={`border ${colorClass}`}>
+        <CardContent className="px-4 py-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-xs text-gray-400">{formatDate(partido.fecha)}</p>
+                {!computa && razonNoComputa && (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-200 text-gray-500">
+                    {RAZON_CORTA[razonNoComputa] ?? razonNoComputa}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {p1} <span className="text-gray-400 font-normal">vs</span> {p2}
+              </p>
+              <p className="text-base font-bold text-gray-800 mt-1 tracking-wide">
+                {setsDisplay(partido)}
+              </p>
+            </div>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${className}`}>
+              {label}
+            </span>
           </div>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${className}`}>
-            {label}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -111,6 +127,34 @@ function FilaPersona({ nombre, partidos, pct }) {
   )
 }
 
+// ── Bottom sheet ──────────────────────────────────────────────────────────────
+
+function BottomSheet({ open, onClose, title, children }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-t-2xl max-h-[85vh] flex flex-col">
+        <div className="flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
+        <div className="flex items-center justify-between px-4 pt-1 pb-3 shrink-0 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+          <button
+            onClick={onClose}
+            className="size-7 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 text-sm"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="overflow-y-auto px-4 pb-8 pt-3 space-y-2">
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function MiPerfil() {
@@ -121,6 +165,8 @@ export default function MiPerfil() {
   const [stats, setStats] = useState(null)
   const [entrada, setEntrada] = useState(null)
   const [ultimosPartidos, setUltimosPartidos] = useState([])
+  const [todosPartidosConEstado, setTodosPartidosConEstado] = useState([])
+  const [verTodosOpen, setVerTodosOpen] = useState(false)
 
   useEffect(() => {
     if (!ligaActiva?.id || !jugadorActual?.id) {
@@ -131,14 +177,15 @@ export default function MiPerfil() {
     async function cargar() {
       try {
         setLoading(true)
-        const [partidos, tabla] = await Promise.all([
-          getPartidosJugador(ligaActiva.id, jugadorActual.id),
+        const [todosConEstado, tabla] = await Promise.all([
+          getPartidosConEstado(ligaActiva.id, jugadorActual.id, ligaActiva),
           calcularClasificacion(ligaActiva.id, ligaActiva),
         ])
-
+        const partidos = todosConEstado.map(({ partido }) => partido)
         setStats(calcularEstadisticasPersonales(partidos, jugadorActual.id))
         setEntrada(tabla.find((e) => e.jugadorId === jugadorActual.id) ?? null)
         setUltimosPartidos(partidos.slice(0, 5))
+        setTodosPartidosConEstado(todosConEstado)
       } catch (err) {
         setError(err.message)
       } finally {
@@ -167,6 +214,8 @@ export default function MiPerfil() {
   }
 
   const metodo = ligaActiva?.metodo_ranking ?? 'puntos_totales'
+  const partidosQueComputan = todosPartidosConEstado.filter((x) => x.computa)
+  const partidosQueNoComputan = todosPartidosConEstado.filter((x) => !x.computa)
 
   return (
     <div className="space-y-4 pb-4">
@@ -251,12 +300,54 @@ export default function MiPerfil() {
           {ultimosPartidos.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">No has jugado ningún partido aún</p>
           ) : (
-            ultimosPartidos.map((p) => (
-              <MiniPartidoCard key={p.id} partido={p} jugadorId={jugadorActual.id} />
-            ))
+            <>
+              {ultimosPartidos.map((p) => (
+                <MiniPartidoCard key={p.id} partido={p} jugadorId={jugadorActual.id} />
+              ))}
+              {todosPartidosConEstado.length > 5 && (
+                <button
+                  onClick={() => setVerTodosOpen(true)}
+                  className="w-full text-sm text-blue-600 hover:text-blue-800 font-medium py-2"
+                >
+                  Ver todos ({todosPartidosConEstado.length})
+                </button>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
+
+      {/* ── Bottom sheet: todos los partidos ── */}
+      <BottomSheet
+        open={verTodosOpen}
+        onClose={() => setVerTodosOpen(false)}
+        title={`Todos los partidos (${todosPartidosConEstado.length})`}
+      >
+        {partidosQueComputan.map(({ partido }) => (
+          <MiniPartidoCard key={partido.id} partido={partido} jugadorId={jugadorActual.id} />
+        ))}
+
+        {partidosQueNoComputan.length > 0 && (
+          <>
+            <div className="flex items-center gap-3 py-2">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs font-medium text-gray-400 whitespace-nowrap shrink-0">
+                No computan para el ranking
+              </span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            {partidosQueNoComputan.map(({ partido, razonNoComputa }) => (
+              <MiniPartidoCard
+                key={partido.id}
+                partido={partido}
+                jugadorId={jugadorActual.id}
+                computa={false}
+                razonNoComputa={razonNoComputa}
+              />
+            ))}
+          </>
+        )}
+      </BottomSheet>
 
     </div>
   )
