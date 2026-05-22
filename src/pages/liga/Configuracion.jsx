@@ -362,6 +362,8 @@ function SeccionPuntuacion({ liga, onGuardado }) {
       criterio_seleccion: liga.criterio_seleccion ?? 'mas_recientes',
       metodo_ranking: liga.metodo_ranking ?? 'puntos_totales',
       min_partidos_ranking: liga.min_partidos_ranking ?? 3,
+      limitar_companero: liga.max_partidos_companero != null,
+      max_partidos_companero: liga.max_partidos_companero != null ? String(liga.max_partidos_companero) : '',
     })
   }, [liga])
 
@@ -393,6 +395,9 @@ function SeccionPuntuacion({ liga, onGuardado }) {
         criterio_seleccion: form.criterio_seleccion,
         metodo_ranking: form.metodo_ranking,
         min_partidos_ranking: Number(form.min_partidos_ranking),
+        max_partidos_companero: form.limitar_companero && form.max_partidos_companero !== ''
+          ? Number(form.max_partidos_companero)
+          : null,
       }
       const updated = await actualizarLiga(liga.id, datos)
       onGuardado(updated)
@@ -495,6 +500,52 @@ function SeccionPuntuacion({ liga, onGuardado }) {
             <p className="text-xs text-muted-foreground mt-1.5">
               {getCriterioDescripcion(form.criterio_seleccion, form.max_partidos)}
             </p>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Limitar partidos por compañero
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setField('limitar_companero', !form.limitar_companero)}
+              className={[
+                'relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0',
+                form.limitar_companero ? 'bg-primary' : 'bg-gray-200',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'inline-block size-4 rounded-full bg-white shadow transition-transform',
+                  form.limitar_companero ? 'translate-x-4' : 'translate-x-0.5',
+                ].join(' ')}
+              />
+            </button>
+          </div>
+
+          {form.limitar_companero && (
+            <div>
+              <label htmlFor="max-partidos-companero" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                Máx. partidos por compañero
+              </label>
+              <Input
+                id="max-partidos-companero"
+                name="max-partidos-companero"
+                type="number"
+                min="1"
+                value={form.max_partidos_companero}
+                onChange={(e) => setField('max_partidos_companero', e.target.value)}
+                className="h-10 w-24"
+                placeholder="—"
+              />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Solo cuentan los últimos {form.max_partidos_companero || 'X'} partidos jugados con cada compañero
+              </p>
+            </div>
           )}
         </div>
 

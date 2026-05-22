@@ -83,6 +83,7 @@ src/
 | created_at | TIMESTAMPTZ | default now() |
 | metodo_ranking | ENUM | 'puntos_totales', 'media_puntos', 'ratio_sets', 'media_puntos_minimo' |
 | min_partidos_ranking | INT | default 3, solo aplica cuando metodo_ranking = 'media_puntos_minimo' |
+| max_partidos_companero | INT | nullable, default null (sin límite) |
 
 ### Tabla: liga_miembros
 | Columna | Tipo | Notas |

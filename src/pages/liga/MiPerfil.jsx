@@ -70,6 +70,7 @@ const RAZON_CORTA = {
   'Supera el máximo de partidos': 'Máx. alcanzado',
   'No está entre los mejores resultados': 'No el mejor',
   'Descartado por ser uno de los peores resultados': 'Entre los peores',
+  'Máx. partidos con este compañero alcanzado': 'Límite compañero',
 }
 
 // ── Mini-card de partido ──────────────────────────────────────────────────────

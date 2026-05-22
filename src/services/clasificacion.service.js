@@ -76,6 +76,28 @@ function getStartOfWeek(date) {
   return d
 }
 
+function buildCompaneroAllowed(partidos, jugadorMap, maxPartidosCompanero) {
+  if (maxPartidosCompanero == null) return null
+  const allowed = new Map()
+  for (const jugadorId of Object.keys(jugadorMap)) {
+    const count = {}
+    const allowedSet = new Set()
+    for (const p of partidos) {
+      const enP1 = p.p1_jugador1_id === jugadorId || p.p1_jugador2_id === jugadorId
+      const enP2 = p.p2_jugador1_id === jugadorId || p.p2_jugador2_id === jugadorId
+      if (!enP1 && !enP2) continue
+      const compId = enP1
+        ? (p.p1_jugador1_id === jugadorId ? p.p1_jugador2_id : p.p1_jugador1_id)
+        : (p.p2_jugador1_id === jugadorId ? p.p2_jugador2_id : p.p2_jugador1_id)
+      const key = compId ?? '__solo__'
+      count[key] = (count[key] ?? 0) + 1
+      if (count[key] <= maxPartidosCompanero) allowedSet.add(p.id)
+    }
+    allowed.set(jugadorId, allowedSet)
+  }
+  return allowed
+}
+
 function calcularRankingDesdePartidos(todosPartidos, jugadores, ligaConfig, fechaCorte = null) {
   const {
     pts_victoria = 3,
@@ -86,6 +108,7 @@ function calcularRankingDesdePartidos(todosPartidos, jugadores, ligaConfig, fech
     criterio_seleccion = 'mas_recientes',
     metodo_ranking = 'puntos_totales',
     min_partidos_ranking = 3,
+    max_partidos_companero = null,
   } = ligaConfig
 
   const fechaRef = fechaCorte ?? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d })()
@@ -96,16 +119,19 @@ function calcularRankingDesdePartidos(todosPartidos, jugadores, ligaConfig, fech
 
   partidos.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
 
+  const jugadorMap = {}
+  for (const j of jugadores) {
+    jugadorMap[j.id] = { jugadorId: j.id, nombre: j.nombre, partidosDetalle: [] }
+  }
+
+  // Companion allowlist built before ventana filter (companion limit has priority)
+  const companeroAllowed = buildCompaneroAllowed(partidos, jugadorMap, max_partidos_companero)
+
   if (ventana_dias !== null) {
     const limite = new Date(fechaRef)
     limite.setDate(limite.getDate() - ventana_dias)
     limite.setHours(0, 0, 0, 0)
     partidos = partidos.filter((p) => new Date(p.fecha) >= limite)
-  }
-
-  const jugadorMap = {}
-  for (const j of jugadores) {
-    jugadorMap[j.id] = { jugadorId: j.id, nombre: j.nombre, partidosDetalle: [] }
   }
 
   for (const p of partidos) {
@@ -120,6 +146,7 @@ function calcularRankingDesdePartidos(todosPartidos, jugadores, ligaConfig, fech
       { id: p.p2_jugador2_id, pareja: 'p2' },
     ]) {
       if (!id || !jugadorMap[id]) continue
+      if (companeroAllowed !== null && !companeroAllowed.get(id)?.has(p.id)) continue
       const gana = pareja === 'p1' ? 'pareja1' : 'pareja2'
       const setsGanados = pareja === 'p1' ? setsGanadosP1 : setsGanadosP2
       let resultado, puntos

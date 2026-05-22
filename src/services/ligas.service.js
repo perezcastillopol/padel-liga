@@ -28,6 +28,7 @@ export async function getMisLigas(userId) {
         criterio_seleccion,
         metodo_ranking,
         min_partidos_ranking,
+        max_partidos_companero,
         created_at,
         liga_miembros(count)
       )

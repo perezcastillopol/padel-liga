@@ -8,9 +8,11 @@ export async function getPartidosConEstado(ligaId, jugadorId, ligaConfig) {
     ventana_dias = null,
     max_partidos = null,
     criterio_seleccion = 'mas_recientes',
+    max_partidos_companero = null,
   } = ligaConfig
 
   const partidos = await getPartidosJugador(ligaId, jugadorId)
+  // partidos sorted desc
 
   const hoy = new Date()
   hoy.setHours(0, 0, 0, 0)
@@ -24,6 +26,22 @@ export async function getPartidosConEstado(ligaId, jugadorId, ligaConfig) {
     return Number(pts_derrota)
   }
 
+  // Step 1: companion filter (applied before ventana, takes priority)
+  const compañeroCount = {}
+  const excludedByCompañero = new Set()
+  if (max_partidos_companero != null) {
+    for (const p of partidos) {
+      const enP1 = p.p1_jugador1_id === jugadorId || p.p1_jugador2_id === jugadorId
+      const compId = enP1
+        ? (p.p1_jugador1_id === jugadorId ? p.p1_jugador2_id : p.p1_jugador1_id)
+        : (p.p2_jugador1_id === jugadorId ? p.p2_jugador2_id : p.p2_jugador1_id)
+      const key = compId ?? '__solo__'
+      compañeroCount[key] = (compañeroCount[key] ?? 0) + 1
+      if (compañeroCount[key] > max_partidos_companero) excludedByCompañero.add(p.id)
+    }
+  }
+
+  // Step 2: ventana temporal (applied to non-companion-excluded partidos)
   let limite = null
   if (ventana_dias !== null) {
     limite = new Date(hoy)
@@ -33,6 +51,7 @@ export async function getPartidosConEstado(ligaId, jugadorId, ligaConfig) {
   const dentroVentana = []
   const fueraVentana = []
   for (const p of partidos) {
+    if (excludedByCompañero.has(p.id)) continue
     if (limite !== null && new Date(p.fecha) < limite) {
       fueraVentana.push(p)
     } else {
@@ -112,6 +131,12 @@ export async function getPartidosConEstado(ligaId, jugadorId, ligaConfig) {
 
   for (const p of fueraVentana) {
     result.push({ partido: p, computa: false, razonNoComputa: 'Fuera de la ventana temporal' })
+  }
+
+  for (const p of partidos) {
+    if (excludedByCompañero.has(p.id)) {
+      result.push({ partido: p, computa: false, razonNoComputa: 'Máx. partidos con este compañero alcanzado' })
+    }
   }
 
   return result
