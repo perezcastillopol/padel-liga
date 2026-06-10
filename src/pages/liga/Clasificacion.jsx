@@ -120,9 +120,14 @@ export default function Clasificacion() {
                   <span className="text-sm font-bold text-gray-400 text-center">
                     {entry.sinRanking ? '—' : entry.posicion}
                   </span>
-                  <span className={`text-sm truncate ${esMiJugador ? 'font-bold text-green-800' : 'font-medium text-gray-900'}`}>
-                    {entry.nombre}
-                    {esMiJugador && <span className="text-[10px] font-normal text-green-600 ml-1">(tú)</span>}
+                  <span className="text-sm min-w-0">
+                    <span className={`block truncate ${esMiJugador ? 'font-bold text-green-800' : 'font-medium text-gray-900'}`}>
+                      {entry.nombre}
+                      {esMiJugador && <span className="text-[10px] font-normal text-green-600 ml-1">(tú)</span>}
+                    </span>
+                    {entry.sinRanking && entry.partidos < 2 && (
+                      <span className="block text-[10px] text-gray-400 leading-none mt-0.5">Mín. 2 partidos</span>
+                    )}
                   </span>
                   <span className="text-sm text-gray-600 text-center">{entry.partidos}</span>
                   <span className="text-sm text-gray-600 text-center">{entry.victorias}</span>

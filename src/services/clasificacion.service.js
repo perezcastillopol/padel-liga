@@ -185,7 +185,7 @@ function calcularRankingDesdePartidos(todosPartidos, jugadores, ligaConfig, fech
     let valorRanking = null
     let sinRanking = false
 
-    if (totalPartidos === 0) {
+    if (totalPartidos < 2) {
       sinRanking = true
     } else {
       switch (metodo_ranking) {
