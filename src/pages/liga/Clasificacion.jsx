@@ -94,16 +94,16 @@ export default function Clasificacion() {
         </div>
       ) : (
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             {/* Cabecera */}
-            <div className="grid grid-cols-[2rem_1fr_2rem_2rem_2rem_2rem_3rem] gap-x-2 items-center px-4 py-2 border-b border-gray-100">
+            <div className="grid grid-cols-[1.5rem_minmax(4.5rem,1fr)_1.5rem_1.5rem_1.5rem_1.5rem_2.5rem] gap-x-1 sm:gap-x-2 items-center px-2 sm:px-4 py-2 border-b border-gray-100 min-w-[320px]">
               <span className="text-[10px] font-semibold text-gray-400 uppercase text-center">#</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase">Jugador</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase text-center" title="Partidos jugados">PJ</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase text-center" title="Victorias">V</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase text-center" title="Derrotas">D</span>
               <span className="text-[10px] font-semibold text-gray-400 uppercase text-center" title="No finalizados">NF</span>
-              <span className="text-[10px] font-semibold text-gray-400 uppercase text-right">{colRanking}</span>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase text-right sticky right-0 bg-card pl-1">{colRanking}</span>
             </div>
 
             {/* Filas */}
@@ -113,14 +113,14 @@ export default function Clasificacion() {
                 <div
                   key={entry.jugadorId}
                   className={[
-                    'grid grid-cols-[2rem_1fr_2rem_2rem_2rem_2rem_3rem] gap-x-2 items-center px-4 py-3 border-b border-gray-50 last:border-0',
+                    'grid grid-cols-[1.5rem_minmax(4.5rem,1fr)_1.5rem_1.5rem_1.5rem_1.5rem_2.5rem] gap-x-1 sm:gap-x-2 items-center px-2 sm:px-4 py-3 border-b border-gray-50 last:border-0 min-w-[320px]',
                     esMiJugador ? 'bg-green-50' : '',
                   ].join(' ')}
                 >
-                  <span className="text-sm font-bold text-gray-400 text-center">
+                  <span className="text-xs sm:text-sm font-bold text-gray-400 text-center">
                     {entry.sinRanking ? '—' : entry.posicion}
                   </span>
-                  <span className="text-sm min-w-0">
+                  <span className="text-xs sm:text-sm min-w-0">
                     <span className={`block truncate ${esMiJugador ? 'font-bold text-green-800' : 'font-medium text-gray-900'}`}>
                       {entry.nombre}
                       {esMiJugador && <span className="text-[10px] font-normal text-green-600 ml-1">(tú)</span>}
@@ -129,11 +129,17 @@ export default function Clasificacion() {
                       <span className="block text-[10px] text-gray-400 leading-none mt-0.5">Mín. 2 partidos</span>
                     )}
                   </span>
-                  <span className="text-sm text-gray-600 text-center">{entry.partidos}</span>
-                  <span className="text-sm text-gray-600 text-center">{entry.victorias}</span>
-                  <span className="text-sm text-gray-600 text-center">{entry.derrotas}</span>
-                  <span className="text-sm text-gray-600 text-center">{entry.noFinalizados}</span>
-                  <span className={`text-sm font-semibold text-right ${entry.sinRanking ? 'text-gray-300' : 'text-gray-900'}`}>
+                  <span className="text-xs sm:text-sm text-gray-600 text-center">{entry.partidos}</span>
+                  <span className="text-xs sm:text-sm text-gray-600 text-center">{entry.victorias}</span>
+                  <span className="text-xs sm:text-sm text-gray-600 text-center">{entry.derrotas}</span>
+                  <span className="text-xs sm:text-sm text-gray-600 text-center">{entry.noFinalizados}</span>
+                  <span
+                    className={[
+                      'text-xs sm:text-sm font-semibold text-right sticky right-0 pl-1',
+                      esMiJugador ? 'bg-green-50' : 'bg-card',
+                      entry.sinRanking ? 'text-gray-300' : 'text-gray-900',
+                    ].join(' ')}
+                  >
                     {entry.sinRanking ? '—' : formatValor(entry.valorRanking, metodo)}
                   </span>
                 </div>
