@@ -200,12 +200,46 @@ Formato: fase suiza + ronda extra + playoff double elimination.
 | torneo_max_derrotas | INT | número de derrotas para eliminar, configurable |
 | torneo_admin_juega | BOOLEAN | si el admin participa como jugador |
 | torneo_estado | TEXT | 'configuracion', 'suiza', 'ronda_extra', 'playoff', 'finalizado' |
+| torneo_min_clasificados | INT | nullable, mínimo de clasificados para playoff |
+| torneo_max_eliminados | INT | nullable, máximo de eliminados para cerrar fase suiza |
 
 ### Tablas nuevas
-- **torneo_participantes**: jugadores inscritos con victorias, derrotas y estado
-- **torneo_rondas**: rondas del torneo (suiza, extra, wb, lb, final)
-- **torneo_partidos**: partidos del torneo con mismo sistema de permisos que liga
-- **torneo_bracket**: estado del bracket del playoff
+
+**torneo_participantes**: jugadores inscritos con victorias, derrotas y estado
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| id | UUID PK | gen_random_uuid() |
+| liga_id | UUID FK | → ligas.id |
+| jugador_id | UUID FK | → liga_jugadores.id |
+| victorias | INT | default 0 |
+| derrotas | INT | default 0 |
+| estado | TEXT | 'activo', 'eliminado', 'clasificado' — default 'activo' |
+| created_at | TIMESTAMPTZ | default now() |
+
+**torneo_rondas**: rondas del torneo (suiza, extra, wb, lb, final)
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| id | UUID PK | gen_random_uuid() |
+| liga_id | UUID FK | → ligas.id |
+| tipo | TEXT | 'suiza', 'extra', 'wb', 'lb', 'final' |
+| numero | INT | número de ronda dentro de ese tipo |
+| created_at | TIMESTAMPTZ | default now() |
+
+**torneo_partidos**: partidos del torneo con mismo sistema de permisos que liga
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| id | UUID PK | gen_random_uuid() |
+| liga_id | UUID FK | → ligas.id |
+| ronda_id | UUID FK | → torneo_rondas.id |
+| p1_jugador1_id / p1_jugador2_id | UUID FK | → liga_jugadores.id |
+| p2_jugador1_id / p2_jugador2_id | UUID FK | → liga_jugadores.id |
+| set1_p1 / set1_p2 / set2_p1 / set2_p2 / set3_p1 / set3_p2 | INT | nullable, igual que partidos |
+| resultado | ENUM | 'pareja1', 'pareja2', 'no_finalizado' |
+| creado_por | UUID FK | → usuarios.id |
+| editado_por_p1 / editado_por_p2 | BOOLEAN | default false |
+| created_at | TIMESTAMPTZ | default now() |
+
+**torneo_bracket**: estado del bracket del playoff (pendiente de diseño detallado)
 
 ### Fases del torneo
 1. **Configuración**: admin configura parámetros e inscribe jugadores

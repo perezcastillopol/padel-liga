@@ -600,6 +600,178 @@ function SeccionPuntuacion({ liga, onGuardado }) {
   )
 }
 
+// ── Sección 3b: Configuración del torneo ─────────────────────────────────────
+
+function SeccionTorneo({ liga, onGuardado }) {
+  const [form, setForm] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [feedback, showFeedback] = useFeedback()
+
+  useEffect(() => {
+    if (!liga) return
+    setForm({
+      torneo_max_jugadores: liga.torneo_max_jugadores != null ? String(liga.torneo_max_jugadores) : '',
+      torneo_max_derrotas: liga.torneo_max_derrotas != null ? String(liga.torneo_max_derrotas) : '',
+      torneo_min_clasificados: liga.torneo_min_clasificados != null ? String(liga.torneo_min_clasificados) : '',
+      torneo_max_eliminados: liga.torneo_max_eliminados != null ? String(liga.torneo_max_eliminados) : '',
+      torneo_admin_juega: liga.torneo_admin_juega ?? true,
+    })
+  }, [liga])
+
+  function setField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const jugadoresNum = Number(form?.torneo_max_jugadores)
+  const errorMaxJugadores =
+    form?.torneo_max_jugadores === '' || !Number.isInteger(jugadoresNum) || jugadoresNum < 8 || jugadoresNum % 4 !== 0
+      ? 'Debe ser múltiplo de 4, mínimo 8'
+      : null
+
+  const derrotasNum = Number(form?.torneo_max_derrotas)
+  const errorMaxDerrotas =
+    form?.torneo_max_derrotas === '' || !Number.isInteger(derrotasNum) || derrotasNum < 1
+      ? 'Debe ser como mínimo 1'
+      : null
+
+  async function guardar() {
+    if (errorMaxJugadores || errorMaxDerrotas) return
+    try {
+      setSaving(true)
+      const datos = {
+        torneo_max_jugadores: Number(form.torneo_max_jugadores),
+        torneo_max_derrotas: Number(form.torneo_max_derrotas),
+        torneo_min_clasificados: form.torneo_min_clasificados === '' ? null : Number(form.torneo_min_clasificados),
+        torneo_max_eliminados: form.torneo_max_eliminados === '' ? null : Number(form.torneo_max_eliminados),
+        torneo_admin_juega: form.torneo_admin_juega,
+      }
+      const updated = await actualizarLiga(liga.id, datos)
+      onGuardado(updated)
+      showFeedback('success', 'Configuración guardada')
+    } catch {
+      showFeedback('error', 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!form) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Configuración del torneo</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="torneo-max-jugadores" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Número de jugadores
+            </label>
+            <Input
+              id="torneo-max-jugadores"
+              name="torneo-max-jugadores"
+              type="number"
+              min="8"
+              step="4"
+              value={form.torneo_max_jugadores}
+              onChange={(e) => setField('torneo_max_jugadores', e.target.value)}
+              className={`h-10 ${errorMaxJugadores ? 'border-destructive' : ''}`}
+            />
+            {errorMaxJugadores && (
+              <p className="text-destructive text-xs mt-1">{errorMaxJugadores}</p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="torneo-max-derrotas" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Derrotas para eliminar
+            </label>
+            <Input
+              id="torneo-max-derrotas"
+              name="torneo-max-derrotas"
+              type="number"
+              min="1"
+              value={form.torneo_max_derrotas}
+              onChange={(e) => setField('torneo_max_derrotas', e.target.value)}
+              className={`h-10 ${errorMaxDerrotas ? 'border-destructive' : ''}`}
+            />
+            {errorMaxDerrotas && (
+              <p className="text-destructive text-xs mt-1">{errorMaxDerrotas}</p>
+            )}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="torneo-min-clasificados" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Mín. clasificados a playoff
+            </label>
+            <Input
+              id="torneo-min-clasificados"
+              name="torneo-min-clasificados"
+              type="number"
+              min="1"
+              value={form.torneo_min_clasificados}
+              onChange={(e) => setField('torneo_min_clasificados', e.target.value)}
+              className="h-10"
+              placeholder="Sin definir"
+            />
+          </div>
+          <div>
+            <label htmlFor="torneo-max-eliminados" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Máx. eliminados fase suiza
+            </label>
+            <Input
+              id="torneo-max-eliminados"
+              name="torneo-max-eliminados"
+              type="number"
+              min="1"
+              value={form.torneo_max_eliminados}
+              onChange={(e) => setField('torneo_max_eliminados', e.target.value)}
+              className="h-10"
+              placeholder="Sin definir"
+            />
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            El admin participa como jugador
+          </p>
+          <button
+            type="button"
+            onClick={() => setField('torneo_admin_juega', !form.torneo_admin_juega)}
+            className={[
+              'relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0',
+              form.torneo_admin_juega ? 'bg-primary' : 'bg-gray-200',
+            ].join(' ')}
+          >
+            <span
+              className={[
+                'inline-block size-4 rounded-full bg-white shadow transition-transform',
+                form.torneo_admin_juega ? 'translate-x-4' : 'translate-x-0.5',
+              ].join(' ')}
+            />
+          </button>
+        </div>
+
+        <Button
+          className="w-full"
+          onClick={guardar}
+          disabled={saving || !!errorMaxJugadores || !!errorMaxDerrotas}
+        >
+          {saving ? 'Guardando...' : 'Guardar configuración del torneo'}
+        </Button>
+        <FeedbackMsg feedback={feedback} />
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Sección 4: Miembros con cuenta ────────────────────────────────────────────
 
 function SeccionMiembros({ ligaId, miembros, userId, onCambio }) {
@@ -739,7 +911,11 @@ export default function Configuracion() {
         jugadores={jugadores}
         onCambio={setJugadores}
       />
-      <SeccionPuntuacion key={`puntuacion-${ligaActiva.id}`} liga={ligaActiva} onGuardado={setLigaActiva} />
+      {ligaActiva.tipo === 'torneo' ? (
+        <SeccionTorneo key={`torneo-${ligaActiva.id}`} liga={ligaActiva} onGuardado={setLigaActiva} />
+      ) : (
+        <SeccionPuntuacion key={`puntuacion-${ligaActiva.id}`} liga={ligaActiva} onGuardado={setLigaActiva} />
+      )}
       <SeccionMiembros
         ligaId={ligaActiva.id}
         miembros={miembros}

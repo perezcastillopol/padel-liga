@@ -33,6 +33,8 @@ export async function getMisLigas(userId) {
         tipo,
         torneo_max_jugadores,
         torneo_max_derrotas,
+        torneo_min_clasificados,
+        torneo_max_eliminados,
         torneo_admin_juega,
         torneo_estado,
         liga_miembros(count)

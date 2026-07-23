@@ -63,8 +63,12 @@ export default function LigaLayout() {
     )
   }
 
+  const esTorneo = ligaActiva?.tipo === 'torneo'
+
   const tabs = [
-    { to: `/liga/${id}/clasificacion`, label: 'Clasificación', icon: '🏆' },
+    esTorneo
+      ? { to: `/liga/${id}/torneo`, label: 'Torneo', icon: '🏆' }
+      : { to: `/liga/${id}/clasificacion`, label: 'Clasificación', icon: '🏆' },
     { to: `/liga/${id}/partidos`, label: 'Partidos', icon: '🎾' },
     { to: `/liga/${id}/perfil`, label: 'Mi perfil', icon: '👤' },
     ...(rol === 'admin'
