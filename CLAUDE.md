@@ -181,47 +181,46 @@ src/
 - Build: `npm run build`
 - Preview build: `npm run preview`
 
-## Estado Actual
-- [x] Proyecto React + Vite creado
-- [x] Repo GitHub: https://github.com/perezcastillopol/padel-liga
-- [x] Proyecto Supabase creado
-- [x] Dependencias instaladas: @supabase/supabase-js, react-router-dom
-- [x] CLAUDE.md creado
-- [x] Schema de base de datos desplegado
-- [x] Auth con Google configurado y funcionando
-- [x] Estructura de carpetas y archivos base
-- [x] Login con Google funcionando
-- [x] Páginas y componentes: MisLigas + flujo crear/unirse a liga
-- [x] Tailwind CSS + shadcn/ui instalado y configurado
-- [x] Página Mis Ligas: listar, crear, unirse con código
-- [x] Navegación interna de liga con barra inferior
-- [x] Diseño responsive mobile-first max-w-md
-- [x] Modal vinculación usuario↔jugador al entrar a liga
-- [x] Página Configuración: info liga, jugadores, puntuación, miembros
-- [x] Página Partidos: listar, crear, editar con permisos por pareja, eliminar
-- [x] Página Clasificación con sistema de ranking configurable
-- [x] Todas las combinaciones de ranking probadas y funcionando
-- [x] Página Mi Perfil: resumen, compañeros, rivales, últimos partidos
-- [x] Variables de entorno configuradas (.env)
-- [x] Criterio de desempate en clasificación
-- [x] Fixes de accesibilidad en formularios
-- [x] PWA manifest configurado con iconos personalizados
-- [x] Desplegado en Vercel: https://padel-liga-eight.vercel.app
-- [x] Variables de entorno configuradas en Vercel
-- [x] Routing SPA configurado con vercel.json
-
-## Próximos Pasos
-1. ✅ Todas las páginas principales completadas
-2. ✅ Despliegue en Vercel
-3. Compartir con el grupo para que se unan a la liga
-4. Pendiente: resultado de votación del sistema de puntos
-
 ## Mejoras Futuras
 - Notificaciones cuando alguien añade un partido
-- Gráfico de evolución del ranking
 - Sistema de temporadas con historial
 - Modo oscuro
-- Vinculación usuario↔jugador: modal al entrar a liga por primera vez
-  preguntando quién es el usuario de la lista de jugadores existentes,
-  con opción de añadirse como jugador nuevo
 
+## Módulo Torneo
+
+### Descripción
+Tipo de liga alternativo al estándar. Se selecciona al crear la liga.
+Formato: fase suiza + ronda extra + playoff double elimination.
+
+### Configuración del torneo (campos en tabla ligas)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| tipo | TEXT | 'estandar' o 'torneo' |
+| torneo_max_jugadores | INT | múltiplo de 4, configurable |
+| torneo_max_derrotas | INT | número de derrotas para eliminar, configurable |
+| torneo_admin_juega | BOOLEAN | si el admin participa como jugador |
+| torneo_estado | TEXT | 'configuracion', 'suiza', 'ronda_extra', 'playoff', 'finalizado' |
+
+### Tablas nuevas
+- **torneo_participantes**: jugadores inscritos con victorias, derrotas y estado
+- **torneo_rondas**: rondas del torneo (suiza, extra, wb, lb, final)
+- **torneo_partidos**: partidos del torneo con mismo sistema de permisos que liga
+- **torneo_bracket**: estado del bracket del playoff
+
+### Fases del torneo
+1. **Configuración**: admin configura parámetros e inscribe jugadores
+2. **Fase suiza**: rondas hasta eliminar max_jugadores/2 jugadores
+3. **Ronda extra**: desempate entre 2-2 y 2-3 para completar clasificados
+4. **Playoff**: double elimination con WB y LB, parejas aleatorias
+5. **Finalizado**: ganador determinado, torneo archivado
+
+### Lo que se reutiliza de la liga estándar
+- Código de invitación y sistema de unirse
+- Gestión de jugadores (liga_jugadores)
+- Sistema de autenticación y roles
+- Componentes de UI
+- Sistema de permisos de edición de partidos
+
+### Navegación
+- Al crear liga: elegir tipo (estándar o torneo)
+- Dentro del torneo: tabs propios diferentes a la liga estándar
