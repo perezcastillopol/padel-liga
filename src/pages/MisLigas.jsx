@@ -17,30 +17,69 @@ import {
 
 // ── Modal crear liga ──────────────────────────────────────────────────────────
 
+const TIPOS_LIGA = [
+  {
+    tipo: 'estandar',
+    icono: '🏅',
+    titulo: 'Liga estándar',
+    descripcion: 'Clasificación continua con puntos acumulados',
+  },
+  {
+    tipo: 'torneo',
+    icono: '🏆',
+    titulo: 'Torneo',
+    descripcion: 'Fase suiza + playoff double elimination',
+  },
+]
+
 function ModalCrearLiga({ onClose, onCreada }) {
   const { user } = useAuth()
   const [nombre, setNombre] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [tipo, setTipo] = useState('estandar')
   const [configAbierta, setConfigAbierta] = useState(false)
   const [ptsVictoria, setPtsVictoria] = useState(3)
   const [ptsDerrota, setPtsDerrota] = useState(1)
   const [ptsNoFinalizado, setPtsNoFinalizado] = useState(1.5)
+  const [maxJugadores, setMaxJugadores] = useState(8)
+  const [maxDerrotas, setMaxDerrotas] = useState(2)
+  const [adminJuega, setAdminJuega] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!nombre.trim()) return
+
+    if (tipo === 'torneo') {
+      const jugadores = Number(maxJugadores)
+      const derrotas = Number(maxDerrotas)
+      if (!Number.isInteger(jugadores) || jugadores < 8 || jugadores % 4 !== 0) {
+        setError('El número de jugadores debe ser múltiplo de 4 y mínimo 8')
+        return
+      }
+      if (!Number.isInteger(derrotas) || derrotas < 1) {
+        setError('Las derrotas para eliminar deben ser como mínimo 1')
+        return
+      }
+    }
+
     try {
       setLoading(true)
       setError(null)
       const liga = await crearLiga(user.id, {
         nombre: nombre.trim(),
         descripcion: descripcion.trim(),
+        tipo,
         config: {
           pts_victoria: Number(ptsVictoria),
           pts_derrota: Number(ptsDerrota),
           pts_no_finalizado: Number(ptsNoFinalizado),
+        },
+        torneoConfig: {
+          max_jugadores: Number(maxJugadores),
+          max_derrotas: Number(maxDerrotas),
+          admin_juega: adminJuega,
         },
       })
       onCreada(liga)
@@ -52,9 +91,31 @@ function ModalCrearLiga({ onClose, onCreada }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-5">Crear liga</h2>
         <form onSubmit={handleSubmit}>
+          <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            Tipo de liga
+          </span>
+          <div className="grid grid-cols-2 gap-2.5 mb-4">
+            {TIPOS_LIGA.map((opcion) => (
+              <button
+                key={opcion.tipo}
+                type="button"
+                onClick={() => setTipo(opcion.tipo)}
+                className={`text-left rounded-xl border-2 px-3 py-3 transition-colors ${
+                  tipo === opcion.tipo
+                    ? 'border-primary bg-primary/5'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <span className="text-2xl">{opcion.icono}</span>
+                <p className="text-sm font-semibold text-gray-900 mt-1">{opcion.titulo}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{opcion.descripcion}</p>
+              </button>
+            ))}
+          </div>
+
           <label htmlFor="crear-nombre" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
             Nombre de la liga *
           </label>
@@ -81,50 +142,102 @@ function ModalCrearLiga({ onClose, onCreada }) {
             placeholder="Opcional"
           />
 
-          <button
-            type="button"
-            className="mt-4 text-xs font-semibold text-gray-500 bg-transparent border-none cursor-pointer p-0"
-            onClick={() => setConfigAbierta((v) => !v)}
-          >
-            {configAbierta ? '▲' : '▼'} Configuración inicial
-          </button>
-
-          {configAbierta && (
-            <div className="bg-gray-50 rounded-lg px-3.5 py-3 mt-2.5 space-y-2">
+          {tipo === 'torneo' && (
+            <div className="bg-gray-50 rounded-lg px-3.5 py-3 mt-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                Configuración del torneo
+              </p>
               <div>
-                <label htmlFor="crear-pts-victoria" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por victoria</label>
+                <label htmlFor="crear-max-jugadores" className="block text-xs font-semibold text-gray-500 mb-1">
+                  Número de jugadores
+                </label>
                 <input
-                  id="crear-pts-victoria"
-                  name="crear-pts-victoria"
+                  id="crear-max-jugadores"
+                  name="crear-max-jugadores"
                   className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
-                  type="number" min="0" step="0.5"
-                  value={ptsVictoria}
-                  onChange={(e) => setPtsVictoria(e.target.value)}
+                  type="number" min="8" step="4"
+                  value={maxJugadores}
+                  onChange={(e) => setMaxJugadores(e.target.value)}
                 />
+                <p className="text-[11px] text-gray-400 mt-0.5">Debe ser múltiplo de 4, mínimo 8</p>
               </div>
               <div>
-                <label htmlFor="crear-pts-derrota" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por derrota</label>
+                <label htmlFor="crear-max-derrotas" className="block text-xs font-semibold text-gray-500 mb-1">
+                  Derrotas para eliminar
+                </label>
                 <input
-                  id="crear-pts-derrota"
-                  name="crear-pts-derrota"
+                  id="crear-max-derrotas"
+                  name="crear-max-derrotas"
                   className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
-                  type="number" min="0" step="0.5"
-                  value={ptsDerrota}
-                  onChange={(e) => setPtsDerrota(e.target.value)}
+                  type="number" min="1" step="1"
+                  value={maxDerrotas}
+                  onChange={(e) => setMaxDerrotas(e.target.value)}
                 />
               </div>
-              <div>
-                <label htmlFor="crear-pts-nf" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por no finalizado</label>
+              <div className="flex items-center justify-between pt-1">
+                <label htmlFor="crear-admin-juega" className="text-xs font-semibold text-gray-500">
+                  El admin participa como jugador
+                </label>
                 <input
-                  id="crear-pts-nf"
-                  name="crear-pts-nf"
-                  className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
-                  type="number" min="0" step="0.5"
-                  value={ptsNoFinalizado}
-                  onChange={(e) => setPtsNoFinalizado(e.target.value)}
+                  id="crear-admin-juega"
+                  name="crear-admin-juega"
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  checked={adminJuega}
+                  onChange={(e) => setAdminJuega(e.target.checked)}
                 />
               </div>
             </div>
+          )}
+
+          {tipo === 'estandar' && (
+            <>
+              <button
+                type="button"
+                className="mt-4 text-xs font-semibold text-gray-500 bg-transparent border-none cursor-pointer p-0"
+                onClick={() => setConfigAbierta((v) => !v)}
+              >
+                {configAbierta ? '▲' : '▼'} Configuración inicial
+              </button>
+
+              {configAbierta && (
+                <div className="bg-gray-50 rounded-lg px-3.5 py-3 mt-2.5 space-y-2">
+                  <div>
+                    <label htmlFor="crear-pts-victoria" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por victoria</label>
+                    <input
+                      id="crear-pts-victoria"
+                      name="crear-pts-victoria"
+                      className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
+                      type="number" min="0" step="0.5"
+                      value={ptsVictoria}
+                      onChange={(e) => setPtsVictoria(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="crear-pts-derrota" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por derrota</label>
+                    <input
+                      id="crear-pts-derrota"
+                      name="crear-pts-derrota"
+                      className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
+                      type="number" min="0" step="0.5"
+                      value={ptsDerrota}
+                      onChange={(e) => setPtsDerrota(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="crear-pts-nf" className="block text-xs font-semibold text-gray-500 mb-1">Puntos por no finalizado</label>
+                    <input
+                      id="crear-pts-nf"
+                      name="crear-pts-nf"
+                      className="w-20 px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
+                      type="number" min="0" step="0.5"
+                      value={ptsNoFinalizado}
+                      onChange={(e) => setPtsNoFinalizado(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {error && <p className="text-destructive text-sm mt-3">{error}</p>}
@@ -233,15 +346,30 @@ function ModalUnirse({ onClose, onUnido }) {
 
 // ── Card de liga ──────────────────────────────────────────────────────────────
 
+const TORNEO_ESTADO_LABEL = {
+  configuracion: 'En configuración',
+  suiza: 'Fase suiza',
+  ronda_extra: 'Ronda extra',
+  playoff: 'Playoff',
+  finalizado: 'Finalizado',
+}
+
 function LigaCard({ liga, onEntrar }) {
+  const esTorneo = liga.tipo === 'torneo'
+
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">{liga.nombre}</CardTitle>
-          <Badge variant={liga.rol === 'admin' ? 'default' : 'secondary'}>
-            {liga.rol === 'admin' ? 'Admin' : 'Jugador'}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant={esTorneo ? 'outline' : 'secondary'}>
+              {esTorneo ? '🏆 Torneo' : '🏅 Liga'}
+            </Badge>
+            <Badge variant={liga.rol === 'admin' ? 'default' : 'secondary'}>
+              {liga.rol === 'admin' ? 'Admin' : 'Jugador'}
+            </Badge>
+          </div>
         </div>
         {liga.descripcion && (
           <CardDescription>{liga.descripcion}</CardDescription>
@@ -249,8 +377,9 @@ function LigaCard({ liga, onEntrar }) {
       </CardHeader>
       <CardFooter className="justify-between">
         <span className="text-xs text-muted-foreground">
-          {liga.num_miembros ?? '—'}{' '}
-          {liga.num_miembros === 1 ? 'miembro' : 'miembros'}
+          {esTorneo
+            ? (TORNEO_ESTADO_LABEL[liga.torneo_estado] ?? '—')
+            : `${liga.num_miembros ?? '—'} ${liga.num_miembros === 1 ? 'miembro' : 'miembros'}`}
         </span>
         <Button size="sm" onClick={() => onEntrar(liga)}>
           Entrar →

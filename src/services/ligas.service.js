@@ -30,6 +30,11 @@ export async function getMisLigas(userId) {
         min_partidos_ranking,
         max_partidos_companero,
         created_at,
+        tipo,
+        torneo_max_jugadores,
+        torneo_max_derrotas,
+        torneo_admin_juega,
+        torneo_estado,
         liga_miembros(count)
       )
     `)
@@ -44,8 +49,9 @@ export async function getMisLigas(userId) {
   }))
 }
 
-export async function crearLiga(userId, { nombre, descripcion, config = {} }) {
+export async function crearLiga(userId, { nombre, descripcion, tipo = 'estandar', config = {}, torneoConfig = {} }) {
   const codigo_invitacion = generateInviteCode()
+  const esTorneo = tipo === 'torneo'
 
   const { data: liga, error: ligaError } = await supabase
     .from('ligas')
@@ -53,12 +59,17 @@ export async function crearLiga(userId, { nombre, descripcion, config = {} }) {
       nombre,
       descripcion: descripcion || null,
       codigo_invitacion,
+      tipo,
       pts_victoria: config.pts_victoria ?? 3,
       pts_derrota: config.pts_derrota ?? 1,
       pts_no_finalizado: config.pts_no_finalizado ?? 1.5,
       criterio_seleccion: 'mas_recientes',
       metodo_ranking: 'puntos_totales',
       min_partidos_ranking: 3,
+      torneo_max_jugadores: esTorneo ? torneoConfig.max_jugadores : null,
+      torneo_max_derrotas: esTorneo ? torneoConfig.max_derrotas : null,
+      torneo_admin_juega: esTorneo ? torneoConfig.admin_juega : null,
+      torneo_estado: esTorneo ? 'configuracion' : null,
     })
     .select()
     .single()
