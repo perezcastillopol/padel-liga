@@ -90,8 +90,8 @@ export default function TorneoConfig() {
     try {
       setIniciando(true)
       setError(null)
-      const liga = await iniciarTorneo(ligaActiva.id, user.id)
-      setLigaActiva(liga)
+      await iniciarTorneo(ligaActiva.id, user.id)
+      setLigaActiva({ ...ligaActiva, torneo_estado: 'suiza' })
       navigate(`/liga/${ligaActiva.id}/torneo`)
     } catch (err) {
       setError(err.message || 'Error al iniciar el torneo')
