@@ -77,7 +77,7 @@ function resultadoBadge(partido) {
   const p1 = [partido.p1j1?.nombre, partido.p1j2?.nombre].filter(Boolean).join(' / ')
   const p2 = [partido.p2j1?.nombre, partido.p2j2?.nombre].filter(Boolean).join(' / ')
   if (partido.resultado === 'pareja1') return { label: p1, className: 'bg-green-100 text-green-800' }
-  if (partido.resultado === 'pareja2') return { label: p2, className: 'bg-red-100 text-red-800' }
+  if (partido.resultado === 'pareja2') return { label: p2, className: 'bg-green-100 text-green-800' }
   return { label: 'No finalizado', className: 'bg-yellow-100 text-yellow-800' }
 }
 
@@ -391,22 +391,22 @@ function PartidoCard({ partido, jugadorActualId, esAdmin, onEditar }) {
 
   return (
     <Card className={`border ${colorClass}`}>
-      <CardContent className="px-4 py-3">
-        <div className="flex items-start justify-between gap-2">
+      <CardContent className="px-2 sm:px-4 py-3 overflow-x-auto">
+        <div className="flex items-start justify-between gap-2 min-w-0">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-400 mb-1">{formatDate(partido.fecha)}</p>
-            <p className="text-sm font-semibold text-gray-900 truncate">
+            <p className="text-xs sm:text-sm font-semibold text-gray-900 leading-snug break-words">
               {p1} <span className="text-gray-400 font-normal">vs</span> {p2}
             </p>
-            <p className="text-base font-bold text-gray-800 mt-1 tracking-wide">
+            <p className="text-sm sm:text-base font-bold text-gray-800 mt-1 tracking-wide">
               {setsDisplay(partido)}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-2 shrink-0">
+          <div className="flex flex-col items-end gap-2 shrink-0 max-w-[35%]">
             {partido.resultado && (() => {
               const { label, className } = resultadoBadge(partido)
               return (
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${className}`}>
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full truncate max-w-full ${className}`}>
                   {label}
                 </span>
               )
