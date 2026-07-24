@@ -898,6 +898,19 @@ function VistaRondaExtra({ ligaActiva, participantes, ronda, jugadorActualId, es
           </p>
         </CardContent>
       </Card>
+
+      {esAdmin && (
+        <SeccionGestionFase
+          ligaId={ligaActiva.id}
+          participantes={participantes}
+          ronda={ronda}
+          maxDerrotas={ligaActiva.torneo_max_derrotas}
+          maxEliminados={ligaActiva.torneo_max_eliminados}
+          minClasificados={ligaActiva.torneo_min_clasificados}
+          onCambio={onCambio}
+        />
+      )}
+
       <SeccionRondaActual
         ligaId={ligaActiva.id}
         ronda={ronda}

@@ -457,24 +457,11 @@ export async function registrarResultadoPartido(partidoId, resultado, sets, juga
 }
 
 async function cerrarRonda(ligaId, rondaId, partidosRonda) {
-  const { data: ronda, error: rondaError } = await supabase
-    .from('torneo_rondas')
-    .select('*')
-    .eq('id', rondaId)
-    .single()
-  if (rondaError) throw rondaError
-
   const { error: cerrarError } = await supabase
     .from('torneo_rondas')
     .update({ estado: 'finalizada' })
     .eq('id', rondaId)
   if (cerrarError) throw cerrarError
-
-  if (ronda.tipo === 'extra') {
-    const { error } = await supabase.from('ligas').update({ torneo_estado: 'playoff' }).eq('id', ligaId)
-    if (error) throw error
-    return
-  }
 
   const { data: liga, error: ligaError } = await supabase
     .from('ligas')
@@ -523,8 +510,11 @@ async function cerrarRonda(ligaId, rondaId, partidosRonda) {
         .eq('id', p.id)
     )
   )
-  // La decisión de seguir en fase suiza o cerrarla ya no es automática: la
-  // toma el admin explícitamente con finalizarFaseSuiza() o crearRondaFinal().
+  // Esta misma lógica aplica tanto a rondas de fase suiza como a rondas
+  // extra: ninguna decide automáticamente el siguiente paso (ni continuar,
+  // ni pasar a playoff) — eso lo hace el admin explícitamente con
+  // finalizarFaseSuiza() o crearRondaFinal(), viendo el botón "Finalizar
+  // fase suiza" tanto en la vista de fase suiza como en la de ronda extra.
 }
 
 // Genera (en preview) los partidos de la siguiente ronda de fase suiza,
@@ -699,6 +689,21 @@ export function calcularCorteFinalSuiza(participantes, numClasifican, repescados
   }
 }
 
+// El número de una nueva ronda extra continúa la numeración global de la
+// liga (no reinicia en 1): el siguiente al máximo `numero` existente entre
+// TODAS las rondas de la liga, sin filtrar por tipo.
+async function obtenerSiguienteNumeroRonda(ligaId) {
+  const { data, error } = await supabase
+    .from('torneo_rondas')
+    .select('numero')
+    .eq('liga_id', ligaId)
+    .order('numero', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data?.numero ?? 0) + 1
+}
+
 // Cierra la fase suiza explícitamente (acción del admin, ya no automática)
 // con los clasificados y eliminados ya decididos en la UI (ver
 // calcularCorteFinalSuiza). Marca sus estados y decide la fase siguiente: si
@@ -733,9 +738,10 @@ export async function finalizarFaseSuiza(ligaId, clasificadosIds, eliminadosIds)
   const siguienteFase = activosRestantes.length >= 2 ? 'ronda_extra' : 'playoff'
 
   if (siguienteFase === 'ronda_extra') {
+    const numero = await obtenerSiguienteNumeroRonda(ligaId)
     const { data: ronda, error: rondaError } = await supabase
       .from('torneo_rondas')
-      .insert({ liga_id: ligaId, tipo: 'extra', numero: 1, estado: 'pendiente' })
+      .insert({ liga_id: ligaId, tipo: 'extra', numero, estado: 'pendiente' })
       .select()
       .single()
     if (rondaError) throw rondaError
@@ -766,9 +772,10 @@ export async function crearRondaFinal(ligaId, jugadorIds) {
     throw new Error('Algún jugador seleccionado no es válido')
   }
 
+  const numero = await obtenerSiguienteNumeroRonda(ligaId)
   const { data: ronda, error: rondaError } = await supabase
     .from('torneo_rondas')
-    .insert({ liga_id: ligaId, tipo: 'extra', numero: 1, estado: 'pendiente' })
+    .insert({ liga_id: ligaId, tipo: 'extra', numero, estado: 'pendiente' })
     .select()
     .single()
   if (rondaError) throw rondaError
