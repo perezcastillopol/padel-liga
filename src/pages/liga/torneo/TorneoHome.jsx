@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../context/AuthContext'
 import { useLiga } from '../../../context/LigaContext'
-import { getMiRolEnLiga } from '../../../services/ligas.service'
+import { getMiRolEnLiga, getLigaById } from '../../../services/ligas.service'
 import { puedeEditar } from '../../../services/partidos.service'
 import {
   getParticipantes,
@@ -16,6 +16,10 @@ import {
   finalizarFaseSuiza,
   crearRondaFinal,
   calcularCorteFinalSuiza,
+  getEstadoPlayoff,
+  finalizarTorneo,
+  getClasificacionPlayoff,
+  getTorneoStats,
 } from '../../../services/torneo.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -79,13 +83,13 @@ function ganadorLabel(partido) {
 
 // ── Tabla de clasificación suiza ──────────────────────────────────────────────
 
-function TablaClasificacionSuiza({ participantes, maxDerrotas }) {
+function TablaClasificacionSuiza({ participantes, maxDerrotas, titulo = 'Clasificación' }) {
   const ordenados = ordenarPorRendimiento(participantes)
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Clasificación</CardTitle>
+        <CardTitle className="text-base">{titulo}</CardTitle>
       </CardHeader>
       <CardContent className="p-0 overflow-x-auto">
         <div className="grid grid-cols-[1.5rem_1fr_2rem_2rem_5rem] gap-x-2 items-center px-4 py-2 border-b border-gray-100 min-w-[320px]">
@@ -258,12 +262,12 @@ function ListaPartidosPreview({ partidos, seleccion, onTap }) {
 
 // ── Jugadores que descansan esta ronda (también tappables) ──────────────────
 
-function ListaDescansan({ jugadorIds, participantesPorJugadorId, seleccion, onTap }) {
+function ListaDescansan({ jugadorIds, participantesPorJugadorId, seleccion, onTap, titulo = 'Descansan esta ronda' }) {
   if (jugadorIds.length === 0) return null
 
   return (
     <div>
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Descansan esta ronda</p>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{titulo}</p>
       <div className="flex flex-wrap gap-2">
         {jugadorIds.map((jugadorId) => {
           const participante = participantesPorJugadorId.get(jugadorId)
@@ -406,17 +410,8 @@ function SeccionRondaActual({ ligaId, ronda, participantes, esAdmin, jugadorActu
       return
     }
     if (seleccion.jugadorId === seleccionNueva.jugadorId) {
+      // mismo jugador: no tiene sentido intercambiarlo consigo mismo, re-seleccionar
       setSeleccion(null)
-      return
-    }
-    if (seleccion.partidoId != null && seleccion.partidoId === seleccionNueva.partidoId) {
-      // otra posición del mismo partido: no se puede intercambiar, re-seleccionar
-      setSeleccion(seleccionNueva)
-      return
-    }
-    if (seleccion.partidoId == null && seleccionNueva.partidoId == null) {
-      // dos jugadores que descansan: no tiene sentido intercambiar, re-seleccionar
-      setSeleccion(seleccionNueva)
       return
     }
     const sel1 = seleccion
@@ -436,6 +431,7 @@ function SeccionRondaActual({ ligaId, ronda, participantes, esAdmin, jugadorActu
   )
   const descansanIds = [...poolIds].filter((id) => !idsEnPartidosLocal.has(id))
 
+  const esBracket = ['wb', 'lb', 'final'].includes(ronda?.tipo)
   const repetidas = esPreview ? verificarParejasRepetidas(partidosLocal, parejasPrevias) : []
 
   if (!ronda) {
@@ -483,6 +479,7 @@ function SeccionRondaActual({ ligaId, ronda, participantes, esAdmin, jugadorActu
             participantesPorJugadorId={participantesPorJugadorId}
             seleccion={seleccion}
             onTap={handleTapJugador}
+            titulo={esBracket ? 'Bye esta ronda' : 'Descansan esta ronda'}
           />
         </>
       ) : (
@@ -924,31 +921,279 @@ function VistaRondaExtra({ ligaActiva, participantes, ronda, jugadorActualId, es
   )
 }
 
-function VistaPlayoff() {
+// ── Bracket del playoff ───────────────────────────────────────────────────────
+
+function FilaBracket({ fila }) {
+  const eliminado = fila.estado === 'eliminado'
+  const tieneBye = !eliminado && fila.bye
+  return (
+    <div
+      className={`px-2.5 py-2 rounded-lg border ${eliminado ? 'bg-gray-50 border-gray-100' : 'bg-white border-gray-100'}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className={`text-sm font-medium truncate min-w-0 ${eliminado ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+          {fila.jugador?.nombre ?? '—'}
+        </p>
+        {eliminado && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 shrink-0">
+            Eliminado
+          </span>
+        )}
+        {tieneBye && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 shrink-0 whitespace-nowrap">
+            Bye →
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-gray-400">{fila.victorias}-{fila.derrotas}</p>
+    </div>
+  )
+}
+
+function ColumnaBracket({ titulo, filas }) {
+  return (
+    <div className="space-y-1.5 min-w-0">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{titulo}</p>
+      {filas.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2">—</p>
+      ) : (
+        <div className="space-y-1.5">
+          {filas.map((f) => <FilaBracket key={f.id} fila={f} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BracketVisual({ wb, lb }) {
   return (
     <Card>
-      <CardContent className="text-center py-10 space-y-2">
-        <p className="text-4xl">🥊</p>
-        <p className="text-sm text-muted-foreground">El bracket del playoff está en construcción</p>
+      <CardHeader>
+        <CardTitle className="text-base">Bracket</CardTitle>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-3">
+        <ColumnaBracket titulo="Winner Bracket" filas={wb} />
+        <ColumnaBracket titulo="Loser Bracket" filas={lb} />
       </CardContent>
     </Card>
   )
 }
 
-function VistaFinalizado({ participantes }) {
+function GranFinalCard({ wb, lb }) {
+  return (
+    <Card>
+      <CardContent className="py-4 space-y-3">
+        <p className="text-sm font-bold text-gray-900">🏆 GRAN FINAL</p>
+        <div className="space-y-1">
+          {wb.map((f) => (
+            <p key={f.id} className="text-sm text-gray-700">
+              <span className="font-semibold">{f.jugador?.nombre ?? '—'}</span>{' '}
+              <span className="text-gray-400">— Viene del Winner Bracket</span>
+            </p>
+          ))}
+          {lb.map((f) => (
+            <p key={f.id} className="text-sm text-gray-700">
+              <span className="font-semibold">{f.jugador?.nombre ?? '—'}</span>{' '}
+              <span className="text-gray-400">— Viene del Loser Bracket</span>
+            </p>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500">
+          Partido único, con parejas sorteadas al azar entre los 4 finalistas — sin ventaja para nadie.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function VistaCampeon({ campeon, esAdmin, onFinalizar }) {
+  const [finalizando, setFinalizando] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function handleFinalizar() {
+    try {
+      setFinalizando(true)
+      setError(null)
+      await onFinalizar()
+    } catch (err) {
+      setError(err.message || 'Error al finalizar el torneo')
+      setFinalizando(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="text-center py-10 space-y-3">
+        <p className="text-5xl">🏆</p>
+        <p className="text-sm text-muted-foreground">¡Campeón del torneo!</p>
+        <p className="text-xl font-bold text-gray-900">{nombresPareja(campeon.j1, campeon.j2)}</p>
+        {esAdmin && (
+          <Button className="mt-2" onClick={handleFinalizar} disabled={finalizando}>
+            {finalizando ? 'Finalizando...' : 'Finalizar torneo'}
+          </Button>
+        )}
+        {error && <p className="text-destructive text-sm">{error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
+// Una sección de ronda por lado del bracket (WB o LB): título propio y su
+// propio sistema de preview/confirmar, totalmente independiente del otro
+// lado — ambos pueden tener una ronda abierta al mismo tiempo.
+function SeccionLadoBracket({ titulo, ligaId, ronda, participantes, esAdmin, jugadorActualId, onRegistrar, onCambio }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{titulo}</p>
+      {ronda ? (
+        <SeccionRondaActual
+          ligaId={ligaId}
+          ronda={ronda}
+          participantes={participantes}
+          esAdmin={esAdmin}
+          jugadorActualId={jugadorActualId}
+          onRegistrar={onRegistrar}
+          onCambio={onCambio}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground text-center py-4">Sin ronda activa</p>
+      )}
+    </div>
+  )
+}
+
+function VistaPlayoff({ ligaActiva, estadoPlayoff, participantes, jugadorActualId, esAdmin, onRegistrar, onCambio }) {
+  if (!estadoPlayoff) return null
+  const { wb, lb, rondaWb, rondaLb, rondaFinal, campeon } = estadoPlayoff
+
+  if (campeon) {
+    return (
+      <VistaCampeon
+        campeon={campeon}
+        esAdmin={esAdmin}
+        onFinalizar={async () => {
+          // torneo_ganador_id solo admite un jugador de referencia; se usa
+          // el primero de la pareja ganadora (j2 queda igualmente marcado
+          // como campeón en torneo_participantes, ver finalizarTorneo()).
+          await finalizarTorneo(ligaActiva.id, campeon.j1.id)
+          onCambio()
+        }}
+      />
+    )
+  }
+
+  const wbActivos = wb.filter((f) => f.estado === 'activo')
+  const lbActivos = lb.filter((f) => f.estado === 'activo')
+
+  const seccionesComunes = { ligaId: ligaActiva.id, participantes, esAdmin, jugadorActualId, onRegistrar, onCambio }
+
+  return (
+    <div className="space-y-4 pb-4">
+      <BracketVisual wb={wb} lb={lb} />
+
+      {rondaFinal && <GranFinalCard wb={wbActivos} lb={lbActivos} />}
+
+      {rondaFinal ? (
+        <SeccionLadoBracket titulo="Gran Final" ronda={rondaFinal} {...seccionesComunes} />
+      ) : (
+        <>
+          {(rondaWb || wb.length > 0) && (
+            <SeccionLadoBracket
+              titulo={rondaWb ? `Winner Bracket - Ronda ${rondaWb.numeroRelativo}` : 'Winner Bracket'}
+              ronda={rondaWb}
+              {...seccionesComunes}
+            />
+          )}
+          {(rondaLb || lb.length > 0) && (
+            <SeccionLadoBracket
+              titulo={rondaLb ? `Loser Bracket - Ronda ${rondaLb.numeroRelativo}` : 'Loser Bracket'}
+              ronda={rondaLb}
+              {...seccionesComunes}
+            />
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function medallaPosicion(posicion) {
+  if (posicion === 1) return '🥇'
+  if (posicion === 2) return '🥈'
+  if (posicion === 3) return '🥉'
+  return null
+}
+
+function ClasificacionPlayoffCard({ clasificacion }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Clasificación del playoff</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {clasificacion.map((c) => (
+          <div
+            key={c.jugadorId}
+            className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 last:border-0"
+          >
+            <span className="text-sm font-bold text-gray-400 w-7 text-center shrink-0">
+              {medallaPosicion(c.posicion) ?? `${c.posicion}º`}
+            </span>
+            <span className="flex-1 text-sm font-medium text-gray-900 truncate">{c.nombre}</span>
+            <span className="text-xs text-gray-400 shrink-0">{c.victoriasPlayoff}-{c.derrotasPlayoff}</span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function EstadisticasTorneoCard({ stats }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Estadísticas del torneo</CardTitle>
+      </CardHeader>
+      <CardContent className="grid grid-cols-3 gap-3 text-center">
+        <div>
+          <p className="text-2xl font-bold text-gray-900">{stats.totalPartidos}</p>
+          <p className="text-xs text-gray-500">Partidos jugados</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-gray-900">{stats.rondasSuiza}</p>
+          <p className="text-xs text-gray-500">Rondas fase suiza</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-gray-900">{stats.rondasPlayoff}</p>
+          <p className="text-xs text-gray-500">Rondas playoff</p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function VistaFinalizado({ participantes, estadoPlayoff, clasificacionPlayoff, torneoStats }) {
+  const campeon = estadoPlayoff?.campeon
   const ordenados = ordenarPorRendimiento(participantes)
-  const ganador = ordenados[0]
+  const ganadorFallback = ordenados[0]
 
   return (
     <div className="space-y-4 pb-4">
       <Card>
-        <CardContent className="text-center py-8 space-y-2">
-          <p className="text-4xl">🏆</p>
+        <CardContent className="text-center py-10 space-y-2">
+          <p className="text-6xl">🏆</p>
+          <p className="text-xl font-bold text-gray-900">
+            {campeon ? nombresPareja(campeon.j1, campeon.j2) : (ganadorFallback?.jugador?.nombre ?? '—')}
+          </p>
           <p className="text-sm text-muted-foreground">Campeón del torneo</p>
-          <p className="text-xl font-bold text-gray-900">{ganador?.jugador?.nombre ?? '—'}</p>
         </CardContent>
       </Card>
-      <TablaClasificacionSuiza participantes={participantes} maxDerrotas={Infinity} />
+
+      {clasificacionPlayoff.length > 0 && <ClasificacionPlayoffCard clasificacion={clasificacionPlayoff} />}
+
+      {torneoStats && <EstadisticasTorneoCard stats={torneoStats} />}
+
+      <TablaClasificacionSuiza participantes={participantes} maxDerrotas={Infinity} titulo="Clasificación fase suiza" />
     </div>
   )
 }
@@ -957,11 +1202,14 @@ function VistaFinalizado({ participantes }) {
 
 export default function TorneoHome() {
   const { user } = useAuth()
-  const { ligaActiva, jugadorActual } = useLiga()
+  const { ligaActiva, setLigaActiva, jugadorActual } = useLiga()
 
   const [rol, setRol] = useState(null)
   const [participantes, setParticipantes] = useState([])
   const [ronda, setRonda] = useState(null)
+  const [estadoPlayoff, setEstadoPlayoff] = useState(null)
+  const [clasificacionPlayoff, setClasificacionPlayoff] = useState([])
+  const [torneoStats, setTorneoStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [partidoModal, setPartidoModal] = useState(null)
@@ -985,8 +1233,29 @@ export default function TorneoHome() {
 
         if (estado === 'suiza' || estado === 'ronda_extra') {
           setRonda(await getRondaActual(ligaActiva.id))
+          setEstadoPlayoff(null)
+          setClasificacionPlayoff([])
+          setTorneoStats(null)
+        } else if (estado === 'playoff') {
+          setRonda(null)
+          setEstadoPlayoff(await getEstadoPlayoff(ligaActiva.id))
+          setClasificacionPlayoff([])
+          setTorneoStats(null)
+        } else if (estado === 'finalizado') {
+          setRonda(null)
+          const [estadoP, clasificacionP, stats] = await Promise.all([
+            getEstadoPlayoff(ligaActiva.id),
+            getClasificacionPlayoff(ligaActiva.id),
+            getTorneoStats(ligaActiva.id),
+          ])
+          setEstadoPlayoff(estadoP)
+          setClasificacionPlayoff(clasificacionP)
+          setTorneoStats(stats)
         } else {
           setRonda(null)
+          setEstadoPlayoff(null)
+          setClasificacionPlayoff([])
+          setTorneoStats(null)
         }
       } catch (err) {
         setError(err.message)
@@ -997,6 +1266,23 @@ export default function TorneoHome() {
 
     cargar()
   }, [ligaActiva?.id, ligaActiva?.torneo_estado, user.id, refreshKey])
+
+  // Refresca ligaActiva desde Supabase y fuerza recargar los datos del
+  // torneo. Se usa como onCambio en vez de solo bumpear refreshKey porque
+  // varias acciones (finalizarFaseSuiza, crearRondaFinal, iniciarPlayoff,
+  // finalizarTorneo...) cambian torneo_estado en la base de datos — sin
+  // refrescar ligaActiva el componente seguiría mostrando la vista anterior
+  // (el switch de más abajo decide la vista a partir de ligaActiva.torneo_estado).
+  async function recargarTodo() {
+    try {
+      const ligaFresca = await getLigaById(ligaActiva.id)
+      setLigaActiva(ligaFresca)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRefreshKey((k) => k + 1)
+    }
+  }
 
   if (loading) {
     return <p className="text-sm text-muted-foreground text-center py-8">Cargando torneo...</p>
@@ -1023,7 +1309,7 @@ export default function TorneoHome() {
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
           onRegistrar={setPartidoModal}
-          onCambio={() => setRefreshKey((k) => k + 1)}
+          onCambio={recargarTodo}
         />
       )
       break
@@ -1036,15 +1322,32 @@ export default function TorneoHome() {
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
           onRegistrar={setPartidoModal}
-          onCambio={() => setRefreshKey((k) => k + 1)}
+          onCambio={recargarTodo}
         />
       )
       break
     case 'playoff':
-      contenido = <VistaPlayoff />
+      contenido = (
+        <VistaPlayoff
+          ligaActiva={ligaActiva}
+          estadoPlayoff={estadoPlayoff}
+          participantes={participantes}
+          jugadorActualId={jugadorActualId}
+          esAdmin={esAdmin}
+          onRegistrar={setPartidoModal}
+          onCambio={recargarTodo}
+        />
+      )
       break
     case 'finalizado':
-      contenido = <VistaFinalizado participantes={participantes} />
+      contenido = (
+        <VistaFinalizado
+          participantes={participantes}
+          estadoPlayoff={estadoPlayoff}
+          clasificacionPlayoff={clasificacionPlayoff}
+          torneoStats={torneoStats}
+        />
+      )
       break
     default:
       contenido = <VistaConfiguracion esAdmin={esAdmin} ligaId={ligaActiva.id} />
@@ -1061,7 +1364,7 @@ export default function TorneoHome() {
           onClose={() => setPartidoModal(null)}
           onGuardado={() => {
             setPartidoModal(null)
-            setRefreshKey((k) => k + 1)
+            recargarTodo()
           }}
         />
       )}

@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { useLiga } from '../../../context/LigaContext'
 import { getJugadoresLiga } from '../../../services/jugadores.service'
+import { getLigaById } from '../../../services/ligas.service'
 import {
   getParticipantes,
   inscribirJugador,
@@ -91,7 +92,7 @@ export default function TorneoConfig() {
       setIniciando(true)
       setError(null)
       await iniciarTorneo(ligaActiva.id, user.id)
-      setLigaActiva({ ...ligaActiva, torneo_estado: 'suiza' })
+      setLigaActiva(await getLigaById(ligaActiva.id))
       navigate(`/liga/${ligaActiva.id}/torneo`)
     } catch (err) {
       setError(err.message || 'Error al iniciar el torneo')

@@ -179,10 +179,22 @@ export function generarParejasAleatorias(participantes, parejasPrevias = new Set
 }
 
 // A partir del pool que se le pasó a generarParejasAleatorias() y los
-// partidos que devolvió, encuentra quién quedó sin partido esta ronda.
-function calcularJugadorDescansa(pool, partidosGenerados) {
+// partidos que devolvió, encuentra a quién le faltó partido esta ronda
+// (normalmente 0 o 1 en fase suiza, pero puede haber más en el playoff).
+function calcularJugadoresSinPartido(pool, partidosGenerados) {
   const idsEnPartidos = new Set(partidosGenerados.flatMap((p) => [p.p1a, p.p1b, p.p2a, p.p2b]))
-  return pool.find((p) => !idsEnPartidos.has(p.jugador_id))?.jugador_id ?? null
+  return pool.filter((p) => !idsEnPartidos.has(p.jugador_id))
+}
+
+// Función pura para el playoff: el pool ya pertenece a un solo lado del
+// bracket (WB o LB), así que a diferencia de generarParejasAleatorias no hace
+// falta agrupar por record — se agrupan de 4 en 4 directamente, evitando
+// repetir parejas ya jugadas EN EL PLAYOFF (parejasPreviasPlayoff; las de la
+// fase suiza sí pueden repetirse, ver getParejasPrevias). El sobrante (pool
+// no múltiplo de 4) descansa esta ronda con bye.
+export function generarParejasPlayoff(clasificados, parejasPreviasPlayoff = new Set()) {
+  const { partidos, sobrante } = formarPartidos(barajar(clasificados), parejasPreviasPlayoff)
+  return { partidos, bye: sobrante }
 }
 
 // Busca, dentro del mismo tipo de ronda, quién descansó en la ronda
@@ -244,9 +256,15 @@ const POS_A_COLUMNA = {
 // es { partidoId, pos, jugadorId }; partidoId es null cuando ese jugador está
 // descansando (no tiene fila en torneo_partidos), en cuyo caso ese lado no
 // tiene nada que actualizar — solo se escribe en el lado que sí tiene partido.
+// Se permite intercambiar dos jugadores del mismo partido (recompone las
+// parejas de ese enfrentamiento): como cada "lado" solo escribe su propia
+// columna (p1_jugador1_id, p1_jugador2_id, p2_jugador1_id o p2_jugador2_id),
+// dos updates a distintas columnas de la misma fila no chocan entre sí. La
+// única combinación que no tiene sentido es intercambiar un jugador consigo
+// mismo.
 export async function intercambiarJugadores(rondaId, lado1, lado2) {
-  if (lado1.partidoId != null && lado1.partidoId === lado2.partidoId) {
-    throw new Error('No se puede intercambiar jugadores dentro del mismo partido')
+  if (lado1.jugadorId === lado2.jugadorId) {
+    throw new Error('No se puede intercambiar un jugador consigo mismo')
   }
 
   async function aplicar(lado, jugadorEntrante) {
@@ -331,7 +349,7 @@ export async function iniciarTorneo(ligaId, userId) {
 
   const parejasPrevias = await getParejasPrevias(ligaId, 'suiza')
   const partidosGenerados = generarParejasAleatorias(activos, parejasPrevias)
-  const jugadorDescansaAhora = calcularJugadorDescansa(activos, partidosGenerados)
+  const jugadorDescansaAhora = calcularJugadoresSinPartido(activos, partidosGenerados)[0]?.jugador_id ?? null
 
   const { data: ronda, error: rondaError } = await supabase
     .from('torneo_rondas')
@@ -363,22 +381,37 @@ async function resolverPartidosDeRonda(ligaId, rondaId) {
   }))
 }
 
-// Jugadores que deberían estar jugando esta ronda de fase suiza (los activos).
-// Usado solo para calcular quién descansa. Las rondas de tipo 'extra' se
-// crean siempre con su pool completo ya resuelto (finalizarFaseSuiza() o
-// crearRondaFinal()), así que no tienen un pool "esperado" recalculable aquí.
-async function calcularPoolEsperado(ligaId, tipoRonda) {
-  if (tipoRonda !== 'suiza') return []
-  const participantes = await getParticipantes(ligaId)
-  return participantes.filter((p) => p.estado === 'activo')
+// Jugadores que deberían estar jugando esta ronda (los activos, en fase
+// suiza; o las filas de torneo_bracket activas asociadas a esta ronda
+// concreta, en WB/LB). Usado solo para calcular quién descansa/tiene bye. Las
+// rondas de tipo 'extra' y 'final' se crean siempre con su pool completo ya
+// resuelto, así que no tienen un pool "esperado" recalculable aquí.
+async function calcularPoolEsperado(ligaId, ronda) {
+  if (ronda.tipo === 'suiza') {
+    const participantes = await getParticipantes(ligaId)
+    return participantes.filter((p) => p.estado === 'activo')
+  }
+  if (ronda.tipo === 'wb' || ronda.tipo === 'lb') {
+    const { data, error } = await supabase
+      .from('torneo_bracket')
+      .select('jugador_id')
+      .eq('liga_id', ligaId)
+      .eq('lado', ronda.tipo)
+      .eq('ronda_id', ronda.id)
+      .eq('estado', 'activo')
+    if (error) throw error
+    return data ?? []
+  }
+  return []
 }
 
 // Participantes del pool esperado que no aparecen en ninguno de los partidos
-// de la ronda. Solo tiene sentido mientras la ronda está en preview.
+// de la ronda. Solo tiene sentido mientras la ronda está en preview. En
+// fase suiza esto es "quién descansa"; en WB/LB es "quién tiene bye".
 async function calcularDescansan(ligaId, ronda, partidos) {
   if (ronda.estado !== 'pendiente') return []
 
-  const pool = await calcularPoolEsperado(ligaId, ronda.tipo)
+  const pool = await calcularPoolEsperado(ligaId, ronda)
   const idsEnPartidos = new Set(
     partidos.flatMap((p) => [p.p1_jugador1_id, p.p1_jugador2_id, p.p2_jugador1_id, p.p2_jugador2_id])
   )
@@ -452,7 +485,18 @@ export async function registrarResultadoPartido(partidoId, resultado, sets, juga
   const rondaCompleta = partidosRonda.every((p) => p.resultado != null)
   if (!rondaCompleta) return { rondaCompleta: false }
 
-  await cerrarRonda(partido.liga_id, partido.ronda_id, partidosRonda)
+  const { data: ronda, error: rondaTipoError } = await supabase
+    .from('torneo_rondas')
+    .select('tipo')
+    .eq('id', partido.ronda_id)
+    .single()
+  if (rondaTipoError) throw rondaTipoError
+
+  if (ronda.tipo === 'wb' || ronda.tipo === 'lb' || ronda.tipo === 'final') {
+    await cerrarRondaPlayoff(partido.liga_id, partido.ronda_id)
+  } else {
+    await cerrarRonda(partido.liga_id, partido.ronda_id, partidosRonda)
+  }
   return { rondaCompleta: true }
 }
 
@@ -517,6 +561,583 @@ async function cerrarRonda(ligaId, rondaId, partidosRonda) {
   // fase suiza" tanto en la vista de fase suiza como en la de ronda extra.
 }
 
+// ── Playoff (double elimination) ─────────────────────────────────────────────
+
+// Récord de victorias/derrotas SOLO del playoff (WB + LB + Gran Final),
+// calculado al vuelo a partir de torneo_partidos — no se guarda en
+// torneo_bracket para no duplicar estado. Devuelve un Map jugador_id -> {victorias, derrotas}.
+async function calcularRecordPlayoff(ligaId) {
+  const { data: rondas, error: rondasError } = await supabase
+    .from('torneo_rondas')
+    .select('id')
+    .eq('liga_id', ligaId)
+    .in('tipo', ['wb', 'lb', 'final'])
+  if (rondasError) throw rondasError
+
+  const rondaIds = (rondas ?? []).map((r) => r.id)
+  const record = new Map()
+  if (rondaIds.length === 0) return record
+
+  const { data: partidos, error: partidosError } = await supabase
+    .from('torneo_partidos')
+    .select('p1_jugador1_id, p1_jugador2_id, p2_jugador1_id, p2_jugador2_id, resultado')
+    .in('ronda_id', rondaIds)
+    .eq('preview', false)
+  if (partidosError) throw partidosError
+
+  function sumar(jugadorId, campo) {
+    if (!record.has(jugadorId)) record.set(jugadorId, { victorias: 0, derrotas: 0 })
+    record.get(jugadorId)[campo] += 1
+  }
+
+  for (const p of partidos ?? []) {
+    if (p.resultado == null || p.resultado === 'no_finalizado') continue
+    const ganadores = p.resultado === 'pareja1'
+      ? [p.p1_jugador1_id, p.p1_jugador2_id]
+      : [p.p2_jugador1_id, p.p2_jugador2_id]
+    const perdedores = p.resultado === 'pareja1'
+      ? [p.p2_jugador1_id, p.p2_jugador2_id]
+      : [p.p1_jugador1_id, p.p1_jugador2_id]
+    ganadores.forEach((id) => sumar(id, 'victorias'))
+    perdedores.forEach((id) => sumar(id, 'derrotas'))
+  }
+
+  return record
+}
+
+// Crea (en preview) la siguiente ronda de un lado del bracket (WB o LB) a
+// partir de quienes siguen 'activo' en ese lado. Marca con bye=true, en las
+// filas de torneo_bracket, a quienes se quedan sin partido esta ronda (pool
+// no múltiplo de 4) y asocia todas las filas de ese lado a esta ronda
+// (ronda_id), jueguen o no, para que calcularPoolEsperado() las recoja.
+async function crearRondaBracket(ligaId, lado, creadoPor) {
+  const { data: filasBracket, error: bracketError } = await supabase
+    .from('torneo_bracket')
+    .select('*')
+    .eq('liga_id', ligaId)
+    .eq('lado', lado)
+    .eq('estado', 'activo')
+  if (bracketError) throw bracketError
+
+  const parejasPrevias = await getParejasPrevias(ligaId, lado)
+  const ids = filasBracket.map((f) => f.jugador_id)
+  const { partidos: partidosIds, bye } = generarParejasPlayoff(ids, parejasPrevias)
+
+  if (partidosIds.length === 0) {
+    throw new Error(
+      `No se puede generar la siguiente ronda de ${lado === 'wb' ? 'Winner Bracket' : 'Loser Bracket'}: ` +
+      'el número de jugadores restante no permite formar ningún partido.'
+    )
+  }
+
+  const numero = await obtenerSiguienteNumeroRonda(ligaId)
+  const { data: ronda, error: rondaError } = await supabase
+    .from('torneo_rondas')
+    .insert({ liga_id: ligaId, tipo: lado, numero, estado: 'pendiente' })
+    .select()
+    .single()
+  if (rondaError) throw rondaError
+
+  await crearPartidosRonda(ronda.id, ligaId, partidosIds, creadoPor, { preview: true })
+
+  const idsConBye = new Set(bye)
+  await Promise.all(
+    filasBracket.map((f) =>
+      supabase.from('torneo_bracket').update({ ronda_id: ronda.id, bye: idsConBye.has(f.jugador_id) }).eq('id', f.id)
+    )
+  )
+
+  return ronda
+}
+
+// Crea la Gran Final: partido único entre los 4 finalistas (2 que llegan
+// desde el WB, 2 desde el LB), con parejas sorteadas al azar entre los 4 —
+// no hay pareja fija ni ventaja para quien viene del WB. Gana quien gane
+// este partido, directamente campeón; no existe ronda de desempate.
+async function crearGranFinal(ligaId, enWb, enLb) {
+  const numero = await obtenerSiguienteNumeroRonda(ligaId)
+  const { data: ronda, error: rondaError } = await supabase
+    .from('torneo_rondas')
+    .insert({ liga_id: ligaId, tipo: 'final', numero, estado: 'pendiente' })
+    .select()
+    .single()
+  if (rondaError) throw rondaError
+
+  const [a, b, c, d] = barajar([...enWb, ...enLb].map((f) => f.jugador_id))
+  const partido = { p1a: a, p1b: b, p2a: c, p2b: d }
+  await crearPartidosRonda(ronda.id, ligaId, [partido], null, { preview: true })
+
+  await Promise.all(
+    [...enWb, ...enLb].map((f) =>
+      supabase.from('torneo_bracket').update({ ronda_id: ronda.id, bye: false }).eq('id', f.id)
+    )
+  )
+
+  return ronda
+}
+
+// WB y LB pueden tener cada uno una ronda activa simultáneamente (p. ej. las
+// dos rondas paralelas que crea iniciarPlayoff() cuando sobran 2 clasificados,
+// o un WB que ya avanzó de ronda mientras el LB anterior sigue abierto): antes
+// de crear una ronda nueva para un lado hay que comprobar que ese lado no
+// tenga ya una en curso, o se duplicaría con jugadores que siguen jugando.
+async function hayRondaActivaDeTipo(ligaId, tipo) {
+  const { data, error } = await supabase
+    .from('torneo_rondas')
+    .select('id')
+    .eq('liga_id', ligaId)
+    .eq('tipo', tipo)
+    .in('estado', ['pendiente', 'en_curso'])
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return !!data
+}
+
+// Avanza el bracket automáticamente cuando se cierra una ronda de playoff
+// (llamado desde cerrarRondaPlayoff). Ganadores de WB siguen en WB;
+// perdedores de WB caen al LB; ganadores de LB siguen en LB; perdedores de LB
+// quedan eliminados del torneo. Un partido 'no_finalizado' no mueve a esos 4
+// jugadores (se quedan 'activo' en su lado actual y entran en la siguiente
+// ronda de ese lado con normalidad) — limitación conocida, ver CLAUDE.md.
+export async function avanzarBracket(ligaId, rondaId) {
+  const { data: ronda, error: rondaError } = await supabase
+    .from('torneo_rondas')
+    .select('*')
+    .eq('id', rondaId)
+    .single()
+  if (rondaError) throw rondaError
+
+  if (ronda.tipo === 'final') {
+    // Partido único: el ganador ya es el campeón directamente, no hay ronda
+    // de desempate que crear. getEstadoPlayoff() deriva el campeón leyendo
+    // el resultado de esta misma ronda una vez queda 'finalizada'.
+    return
+  }
+
+  const { data: partidosRonda, error: partidosError } = await supabase
+    .from('torneo_partidos')
+    .select('*')
+    .eq('ronda_id', rondaId)
+  if (partidosError) throw partidosError
+
+  const { data: filasBracket, error: bracketError } = await supabase
+    .from('torneo_bracket')
+    .select('*')
+    .eq('liga_id', ligaId)
+    .eq('ronda_id', rondaId)
+  if (bracketError) throw bracketError
+  const bracketPorJugador = new Map(filasBracket.map((f) => [f.jugador_id, f]))
+
+  const actualizaciones = new Map()
+  for (const p of partidosRonda) {
+    if (p.resultado === 'no_finalizado') continue
+    const ganadores = p.resultado === 'pareja1'
+      ? [p.p1_jugador1_id, p.p1_jugador2_id]
+      : [p.p2_jugador1_id, p.p2_jugador2_id]
+    const perdedores = p.resultado === 'pareja1'
+      ? [p.p2_jugador1_id, p.p2_jugador2_id]
+      : [p.p1_jugador1_id, p.p1_jugador2_id]
+
+    for (const jugadorId of ganadores) {
+      actualizaciones.set(jugadorId, { lado: ronda.tipo, estado: 'activo' })
+    }
+    for (const jugadorId of perdedores) {
+      actualizaciones.set(jugadorId, ronda.tipo === 'wb' ? { lado: 'lb', estado: 'activo' } : { lado: 'lb', estado: 'eliminado' })
+    }
+  }
+
+  await Promise.all(
+    [...actualizaciones.entries()].map(([jugadorId, cambio]) => {
+      const fila = bracketPorJugador.get(jugadorId)
+      if (!fila) return null
+      return supabase.from('torneo_bracket').update(cambio).eq('id', fila.id)
+    })
+  )
+
+  const { data: bracketActivo, error: activoError } = await supabase
+    .from('torneo_bracket')
+    .select('*')
+    .eq('liga_id', ligaId)
+    .eq('estado', 'activo')
+  if (activoError) throw activoError
+
+  const enWb = bracketActivo.filter((f) => f.lado === 'wb')
+  const enLb = bracketActivo.filter((f) => f.lado === 'lb')
+
+  // Los dos lados se comprueban de forma independiente (no "else if"): con
+  // rondas WB/LB en paralelo, cerrar la ronda de un lado puede necesitar
+  // generar la siguiente ronda de ESE lado sin tocar el otro, que puede
+  // seguir teniendo su propia ronda abierta.
+  if (enWb.length > 2 && !(await hayRondaActivaDeTipo(ligaId, 'wb'))) {
+    await crearRondaBracket(ligaId, 'wb', null)
+  }
+  if (enLb.length > 2 && !(await hayRondaActivaDeTipo(ligaId, 'lb'))) {
+    await crearRondaBracket(ligaId, 'lb', null)
+  }
+  if (enWb.length === 2 && enLb.length === 2 && !(await hayRondaActivaDeTipo(ligaId, 'final'))) {
+    await crearGranFinal(ligaId, enWb, enLb)
+  }
+  // Si un lado ya bajó a 2 pero el otro aún no, no se crea nada: se espera a
+  // que el otro lado también resuelva sus rondas pendientes.
+}
+
+// Cierra una ronda de playoff (WB, LB o Gran Final): la marca 'finalizada' y
+// dispara el avance automático del bracket (a diferencia de fase suiza/extra,
+// donde el avance es siempre una acción manual del admin).
+async function cerrarRondaPlayoff(ligaId, rondaId) {
+  const { error } = await supabase.from('torneo_rondas').update({ estado: 'finalizada' }).eq('id', rondaId)
+  if (error) throw error
+  await avanzarBracket(ligaId, rondaId)
+}
+
+// Arranca el playoff a partir de los participantes 'clasificado', ordenados
+// por victorias desc / derrotas asc. Si el número de clasificados no es
+// múltiplo de 4 (debe serlo, o serlo +2), los 2 primeros del ranking tienen
+// bye en la primera ronda de WB (sorteo aleatorio si empatan en el puesto de
+// corte). TODOS los clasificados entran en `torneo_bracket` con `lado='wb'`
+// — el LB arranca completamente vacío y solo se puebla más adelante con los
+// perdedores de la propia WB Ronda 1 (vía avanzarBracket()); no se crea
+// ninguna ronda LB aquí. Los clasificados sin bye juegan la ronda `tipo='wb'`
+// en preview; los 2 con bye quedan asociados a esa misma ronda (bye=true,
+// sin partido) hasta que les toque jugar en WB Ronda 2.
+export async function iniciarPlayoff(ligaId) {
+  const participantes = await getParticipantes(ligaId)
+  let clasificados = [...participantes.filter((p) => p.estado === 'clasificado')].sort((a, b) => {
+    if (b.victorias !== a.victorias) return b.victorias - a.victorias
+    return a.derrotas - b.derrotas
+  })
+
+  const n = clasificados.length
+  const resto = n % 4
+  if (n === 0 || (resto !== 0 && resto !== 2)) {
+    throw new Error('El número de clasificados no permite formar el playoff (debe ser múltiplo de 4, o múltiplo de 4 más 2)')
+  }
+
+  if (resto === 2) {
+    const [primero, segundo] = clasificados
+    if (primero.victorias === segundo.victorias && primero.derrotas === segundo.derrotas && Math.random() < 0.5) {
+      clasificados = [segundo, primero, ...clasificados.slice(2)]
+    }
+  }
+
+  const conBye = resto === 2 ? clasificados.slice(0, 2) : []
+  const sinBye = resto === 2 ? clasificados.slice(2) : clasificados
+  const idsConBye = new Set(conBye.map((p) => p.jugador_id))
+  const posicionPorId = new Map(clasificados.map((p, i) => [p.jugador_id, i + 1]))
+
+  const numero = await obtenerSiguienteNumeroRonda(ligaId)
+  const { data: rondaWb, error: rondaWbError } = await supabase
+    .from('torneo_rondas')
+    .insert({ liga_id: ligaId, tipo: 'wb', numero, estado: 'pendiente' })
+    .select()
+    .single()
+  if (rondaWbError) throw rondaWbError
+
+  const filasBracket = clasificados.map((p) => ({
+    liga_id: ligaId,
+    ronda_id: rondaWb.id,
+    jugador_id: p.jugador_id,
+    posicion: posicionPorId.get(p.jugador_id),
+    lado: 'wb',
+    estado: 'activo',
+    bye: idsConBye.has(p.jugador_id),
+  }))
+  const { error: bracketError } = await supabase.from('torneo_bracket').insert(filasBracket)
+  if (bracketError) throw bracketError
+
+  const parejasPrevias = await getParejasPrevias(ligaId, 'wb')
+  const { partidos: partidosWb } = generarParejasPlayoff(sinBye.map((p) => p.jugador_id), parejasPrevias)
+  await crearPartidosRonda(rondaWb.id, ligaId, partidosWb, null, { preview: true })
+
+  const { error: estadoError } = await supabase.from('ligas').update({ torneo_estado: 'playoff' }).eq('id', ligaId)
+  if (estadoError) throw estadoError
+}
+
+// Número de ronda relativo dentro de su lado del bracket (1, 2, 3... contando
+// solo rondas del mismo tipo — wb o lb — anteriores a esta), en vez del
+// `numero` absoluto que continúa la numeración global de toda la liga.
+async function contarRondaRelativa(ligaId, ronda) {
+  if (ronda.tipo !== 'wb' && ronda.tipo !== 'lb') return null
+  const { count, error } = await supabase
+    .from('torneo_rondas')
+    .select('*', { count: 'exact', head: true })
+    .eq('liga_id', ligaId)
+    .eq('tipo', ronda.tipo)
+    .lt('numero', ronda.numero)
+  if (error) throw error
+  return (count ?? 0) + 1
+}
+
+// Ronda activa (pendiente o en_curso) de un tipo concreto ('wb', 'lb' o
+// 'final'), con sus partidos y quién tiene bye — igual que getRondaActual()
+// pero acotada a un solo lado, ya que WB y LB pueden tener cada uno su propia
+// ronda abierta al mismo tiempo (a diferencia de fase suiza/extra, donde solo
+// hay una ronda activa por liga).
+async function getRondaActivaDeTipo(ligaId, tipo) {
+  const { data: ronda, error } = await supabase
+    .from('torneo_rondas')
+    .select('*')
+    .eq('liga_id', ligaId)
+    .eq('tipo', tipo)
+    .in('estado', ['en_curso', 'pendiente'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  if (!ronda) return null
+
+  const partidos = await resolverPartidosDeRonda(ligaId, ronda.id)
+  const descansan = await calcularDescansan(ligaId, ronda, partidos)
+  return { ...ronda, partidos, descansan }
+}
+
+// Estado completo del bracket para la UI: jugadores en WB y en LB (con su
+// posición inicial y récord de playoff), la ronda activa de cada lado
+// (rondaWb/rondaLb — pueden coexistir en paralelo, p. ej. justo al arrancar
+// el playoff con 2 clasificados de sobra), la Gran Final (rondaFinal, nunca
+// simultánea con rondaWb/rondaLb) y el campeón si ya se decidió (derivado de
+// la última ronda 'final' finalizada cuando ya no queda ninguna ronda
+// pendiente/en curso en ningún lado).
+export async function getEstadoPlayoff(ligaId) {
+  const { data: filas, error } = await supabase
+    .from('torneo_bracket')
+    .select('*, liga_jugadores ( id, nombre )')
+    .eq('liga_id', ligaId)
+    .order('posicion', { ascending: true })
+  if (error) throw error
+
+  const record = await calcularRecordPlayoff(ligaId)
+  function enriquecer(f) {
+    return {
+      ...f,
+      jugador: f.liga_jugadores,
+      victorias: record.get(f.jugador_id)?.victorias ?? 0,
+      derrotas: record.get(f.jugador_id)?.derrotas ?? 0,
+    }
+  }
+
+  const wb = (filas ?? []).filter((f) => f.lado === 'wb').map(enriquecer)
+  const lb = (filas ?? []).filter((f) => f.lado === 'lb').map(enriquecer)
+
+  const [rondaWbActiva, rondaLbActiva, rondaFinal] = await Promise.all([
+    getRondaActivaDeTipo(ligaId, 'wb'),
+    getRondaActivaDeTipo(ligaId, 'lb'),
+    getRondaActivaDeTipo(ligaId, 'final'),
+  ])
+
+  const rondaWb = rondaWbActiva
+    ? { ...rondaWbActiva, numeroRelativo: await contarRondaRelativa(ligaId, rondaWbActiva) }
+    : null
+  const rondaLb = rondaLbActiva
+    ? { ...rondaLbActiva, numeroRelativo: await contarRondaRelativa(ligaId, rondaLbActiva) }
+    : null
+
+  let campeon = null
+  if (!rondaWb && !rondaLb && !rondaFinal) {
+    const { data: ultimaFinal, error: finalError } = await supabase
+      .from('torneo_rondas')
+      .select('*')
+      .eq('liga_id', ligaId)
+      .eq('tipo', 'final')
+      .eq('estado', 'finalizada')
+      .order('numero', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (finalError) throw finalError
+
+    if (ultimaFinal) {
+      const partidosFinal = await resolverPartidosDeRonda(ligaId, ultimaFinal.id)
+      const partido = partidosFinal[0]
+      if (partido?.resultado === 'pareja1') campeon = { j1: partido.p1j1, j2: partido.p1j2 }
+      else if (partido?.resultado === 'pareja2') campeon = { j1: partido.p2j1, j2: partido.p2j2 }
+    }
+  }
+
+  return { wb, lb, rondaWb, rondaLb, rondaFinal, campeon }
+}
+
+// Cierra el torneo (acción explícita del admin tras ver la pantalla de
+// campeón): guarda campeonId en ligas.torneo_ganador_id (un único jugador de
+// referencia; la pareja ganadora completa se sigue viendo en el resultado del
+// partido de la Gran Final) y marca campeon=true en torneo_participantes para
+// los 2 jugadores de la pareja ganadora — releída aquí desde el resultado del
+// partido, no confiada al llamador, para no depender de que el cliente pase
+// el id correcto del compañero.
+export async function finalizarTorneo(ligaId, campeonId) {
+  const { data: ultimaFinal, error: finalError } = await supabase
+    .from('torneo_rondas')
+    .select('*')
+    .eq('liga_id', ligaId)
+    .eq('tipo', 'final')
+    .eq('estado', 'finalizada')
+    .order('numero', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (finalError) throw finalError
+
+  if (ultimaFinal) {
+    const { data: partidoFinal, error: partidoError } = await supabase
+      .from('torneo_partidos')
+      .select('*')
+      .eq('ronda_id', ultimaFinal.id)
+      .maybeSingle()
+    if (partidoError) throw partidoError
+
+    if (partidoFinal?.resultado === 'pareja1' || partidoFinal?.resultado === 'pareja2') {
+      const ganadoresIds = partidoFinal.resultado === 'pareja1'
+        ? [partidoFinal.p1_jugador1_id, partidoFinal.p1_jugador2_id]
+        : [partidoFinal.p2_jugador1_id, partidoFinal.p2_jugador2_id]
+
+      const { data: participantesGanadores, error: participantesError } = await supabase
+        .from('torneo_participantes')
+        .select('id')
+        .eq('liga_id', ligaId)
+        .in('jugador_id', ganadoresIds)
+      if (participantesError) throw participantesError
+
+      if (participantesGanadores.length > 0) {
+        const { error: badgeError } = await supabase
+          .from('torneo_participantes')
+          .update({ campeon: true })
+          .in('id', participantesGanadores.map((p) => p.id))
+        if (badgeError) throw badgeError
+      }
+    }
+  }
+
+  const { error } = await supabase
+    .from('ligas')
+    .update({ torneo_estado: 'finalizado', torneo_ganador_id: campeonId })
+    .eq('id', ligaId)
+  if (error) throw error
+}
+
+// Posición final de cada jugador que llegó al playoff, derivada por completo
+// del historial real de partidos (no del `estado`/`ronda_id` "actuales" de
+// torneo_bracket, que para los 4 finalistas de la Gran Final no se actualizan
+// — avanzarBracket() no toca nada cuando cierra una ronda 'final'):
+//   1º/2º → ganadores/perdedores de la ronda 'final' (empatados de a 2, ya
+//     que la Gran Final es 2vs2 y no hay desempate por posición individual).
+//   3º-4º → perdedores de la última ronda 'lb' (por `numero`) antes de la
+//     final — siempre exactamente un partido de 4, ya que el LB solo llega a
+//     quedar en 2 jugando una ronda con pool=4.
+//   El resto → agrupados por la ronda 'lb' en la que perdieron (ronda más
+//     reciente = mejor posición), continuando la numeración de posiciones
+//     tras el hueco que dejó el grupo anterior (p. ej. si 3º-4º ocupó 2
+//     puestos, el siguiente grupo empieza en 5º).
+export async function getClasificacionPlayoff(ligaId) {
+  const { data: filasBracket, error: bracketError } = await supabase
+    .from('torneo_bracket')
+    .select('jugador_id, liga_jugadores ( id, nombre )')
+    .eq('liga_id', ligaId)
+  if (bracketError) throw bracketError
+
+  const nombrePorJugador = new Map(filasBracket.map((f) => [f.jugador_id, f.liga_jugadores?.nombre ?? '—']))
+  const record = await calcularRecordPlayoff(ligaId)
+
+  const { data: rondas, error: rondasError } = await supabase
+    .from('torneo_rondas')
+    .select('id, tipo, numero')
+    .eq('liga_id', ligaId)
+    .in('tipo', ['wb', 'lb', 'final'])
+    .order('numero', { ascending: true })
+  if (rondasError) throw rondasError
+
+  const rondaIds = rondas.map((r) => r.id)
+  const { data: partidos, error: partidosError } = rondaIds.length === 0
+    ? { data: [], error: null }
+    : await supabase
+      .from('torneo_partidos')
+      .select('ronda_id, p1_jugador1_id, p1_jugador2_id, p2_jugador1_id, p2_jugador2_id, resultado')
+      .in('ronda_id', rondaIds)
+      .eq('preview', false)
+  if (partidosError) throw partidosError
+
+  const posiciones = new Map()
+  let siguientePosicion = 1
+
+  const rondaFinal = rondas.filter((r) => r.tipo === 'final').sort((a, b) => b.numero - a.numero)[0] ?? null
+  const partidoFinal = rondaFinal
+    ? partidos.find((p) => p.ronda_id === rondaFinal.id && (p.resultado === 'pareja1' || p.resultado === 'pareja2'))
+    : null
+
+  if (partidoFinal) {
+    const ganadores = partidoFinal.resultado === 'pareja1'
+      ? [partidoFinal.p1_jugador1_id, partidoFinal.p1_jugador2_id]
+      : [partidoFinal.p2_jugador1_id, partidoFinal.p2_jugador2_id]
+    const perdedores = partidoFinal.resultado === 'pareja1'
+      ? [partidoFinal.p2_jugador1_id, partidoFinal.p2_jugador2_id]
+      : [partidoFinal.p1_jugador1_id, partidoFinal.p1_jugador2_id]
+    ganadores.forEach((id) => posiciones.set(id, 1))
+    perdedores.forEach((id) => posiciones.set(id, 2))
+    siguientePosicion = 3
+  }
+
+  const rondasLb = rondas.filter((r) => r.tipo === 'lb').sort((a, b) => b.numero - a.numero)
+
+  for (const ronda of rondasLb) {
+    const perdedoresRonda = []
+    for (const p of partidos.filter((p) => p.ronda_id === ronda.id)) {
+      if (p.resultado !== 'pareja1' && p.resultado !== 'pareja2') continue
+      const perdedores = p.resultado === 'pareja1'
+        ? [p.p2_jugador1_id, p.p2_jugador2_id]
+        : [p.p1_jugador1_id, p.p1_jugador2_id]
+      for (const id of perdedores) {
+        if (!posiciones.has(id)) perdedoresRonda.push(id)
+      }
+    }
+    if (perdedoresRonda.length === 0) continue
+    for (const id of perdedoresRonda) posiciones.set(id, siguientePosicion)
+    siguientePosicion += perdedoresRonda.length
+  }
+
+  for (const f of filasBracket) {
+    if (!posiciones.has(f.jugador_id)) posiciones.set(f.jugador_id, siguientePosicion++)
+  }
+
+  return [...posiciones.entries()]
+    .map(([jugadorId, posicion]) => ({
+      jugadorId,
+      nombre: nombrePorJugador.get(jugadorId) ?? '—',
+      posicion,
+      victoriasPlayoff: record.get(jugadorId)?.victorias ?? 0,
+      derrotasPlayoff: record.get(jugadorId)?.derrotas ?? 0,
+    }))
+    .sort((a, b) => a.posicion - b.posicion)
+}
+
+// Estadísticas generales del torneo para la pantalla final: total de
+// partidos jugados (suiza + playoff, contando solo los ya confirmados/no
+// preview) y número de rondas de cada fase.
+export async function getTorneoStats(ligaId) {
+  const { data: rondas, error: rondasError } = await supabase
+    .from('torneo_rondas')
+    .select('id, tipo')
+    .eq('liga_id', ligaId)
+  if (rondasError) throw rondasError
+
+  const rondaIds = rondas.map((r) => r.id)
+  const rondasSuiza = rondas.filter((r) => r.tipo === 'suiza' || r.tipo === 'extra').length
+  const rondasPlayoff = rondas.filter((r) => r.tipo === 'wb' || r.tipo === 'lb' || r.tipo === 'final').length
+
+  const { count, error: partidosError } = rondaIds.length === 0
+    ? { count: 0, error: null }
+    : await supabase
+      .from('torneo_partidos')
+      .select('*', { count: 'exact', head: true })
+      .in('ronda_id', rondaIds)
+      .eq('preview', false)
+      .not('resultado', 'is', null)
+  if (partidosError) throw partidosError
+
+  return {
+    totalPartidos: count ?? 0,
+    rondasSuiza,
+    rondasPlayoff,
+  }
+}
+
 // Genera (en preview) los partidos de la siguiente ronda de fase suiza,
 // dando prioridad a quien descansó en la ronda anterior. No la marca como
 // 'en_curso' hasta que el admin la confirme. La ronda extra ya NO se genera
@@ -550,7 +1171,7 @@ export async function generarPreviewRonda(ligaId) {
 
   const parejasPrevias = await getParejasPrevias(ligaId, 'suiza')
   const partidosGenerados = generarParejasAleatorias(activos, parejasPrevias, jugadorQueDescanso)
-  const jugadorDescansaAhora = calcularJugadorDescansa(activos, partidosGenerados)
+  const jugadorDescansaAhora = calcularJugadoresSinPartido(activos, partidosGenerados)[0]?.jugador_id ?? null
 
   const { data: ronda, error: rondaError } = await supabase
     .from('torneo_rondas')
@@ -602,6 +1223,50 @@ export async function repetirSorteo(ligaId, rondaId) {
     .single()
   if (rondaError) throw rondaError
 
+  if (ronda.tipo === 'final') {
+    const { data: filasBracket, error: bracketError } = await supabase
+      .from('torneo_bracket')
+      .select('jugador_id')
+      .eq('liga_id', ligaId)
+      .eq('ronda_id', rondaId)
+    if (bracketError) throw bracketError
+
+    await supabase.from('torneo_partidos').delete().eq('ronda_id', rondaId)
+
+    const [a, b, c, d] = barajar(filasBracket.map((f) => f.jugador_id))
+    await crearPartidosRonda(rondaId, ligaId, [{ p1a: a, p1b: b, p2a: c, p2b: d }], null, { preview: true })
+
+    return getRondaConPartidos(ligaId, rondaId)
+  }
+
+  if (ronda.tipo === 'wb' || ronda.tipo === 'lb') {
+    const { data: filasBracket, error: bracketError } = await supabase
+      .from('torneo_bracket')
+      .select('*')
+      .eq('liga_id', ligaId)
+      .eq('lado', ronda.tipo)
+      .eq('ronda_id', rondaId)
+      .eq('estado', 'activo')
+    if (bracketError) throw bracketError
+
+    await supabase.from('torneo_partidos').delete().eq('ronda_id', rondaId)
+
+    const parejasPrevias = await getParejasPrevias(ligaId, ronda.tipo)
+    const ids = filasBracket.map((f) => f.jugador_id)
+    const { partidos: partidosIds, bye } = generarParejasPlayoff(ids, parejasPrevias)
+    if (partidosIds.length === 0) {
+      throw new Error('No se puede repetir el sorteo: el número de jugadores no permite formar ningún partido.')
+    }
+    await crearPartidosRonda(rondaId, ligaId, partidosIds, null, { preview: true })
+
+    const idsConBye = new Set(bye)
+    await Promise.all(
+      filasBracket.map((f) => supabase.from('torneo_bracket').update({ bye: idsConBye.has(f.jugador_id) }).eq('id', f.id))
+    )
+
+    return getRondaConPartidos(ligaId, rondaId)
+  }
+
   const participantes = await getParticipantes(ligaId)
 
   let pool
@@ -629,7 +1294,7 @@ export async function repetirSorteo(ligaId, rondaId) {
 
   const parejasPrevias = await getParejasPrevias(ligaId, ronda.tipo)
   const partidosGenerados = generarParejasAleatorias(pool, parejasPrevias, jugadorQueDescanso)
-  const jugadorDescansaAhora = calcularJugadorDescansa(pool, partidosGenerados)
+  const jugadorDescansaAhora = calcularJugadoresSinPartido(pool, partidosGenerados)[0]?.jugador_id ?? null
   await crearPartidosRonda(rondaId, ligaId, partidosGenerados, null, { preview: true })
 
   const { error: updateError } = await supabase
@@ -748,10 +1413,14 @@ export async function finalizarFaseSuiza(ligaId, clasificadosIds, eliminadosIds)
 
     const partidosGenerados = generarParejasAleatorias(activosRestantes, new Set())
     await crearPartidosRonda(ronda.id, ligaId, partidosGenerados, null, { preview: true })
-  }
 
-  const { error: estadoError } = await supabase.from('ligas').update({ torneo_estado: siguienteFase }).eq('id', ligaId)
-  if (estadoError) throw estadoError
+    const { error: estadoError } = await supabase.from('ligas').update({ torneo_estado: siguienteFase }).eq('id', ligaId)
+    if (estadoError) throw estadoError
+  } else {
+    // iniciarPlayoff() ya deja torneo_estado en 'playoff' como último paso,
+    // junto con la creación del bracket, para que ambas cosas queden atómicas.
+    await iniciarPlayoff(ligaId)
+  }
 
   return { siguienteFase }
 }
