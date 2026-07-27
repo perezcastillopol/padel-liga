@@ -11,6 +11,8 @@ import {
   eliminarPartido,
   puedeEditar,
 } from '../../services/partidos.service'
+import { getTodosPartidosTorneo, puedeEditarTorneo } from '../../services/torneo.service'
+import RegistrarResultadoModal from './torneo/RegistrarResultadoModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -448,9 +450,9 @@ function PanelFormulario({ children, titulo, onCerrar }) {
   )
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+// ── Página principal (liga estándar) ────────────────────────────────────────
 
-export default function Partidos() {
+function PartidosEstandar() {
   const { user } = useAuth()
   const { ligaActiva, jugadorActual } = useLiga()
 
@@ -606,4 +608,243 @@ export default function Partidos() {
       )}
     </div>
   )
+}
+
+// ── Página principal (liga torneo) ──────────────────────────────────────────
+
+function formatFecha(isoTimestamp) {
+  if (!isoTimestamp) return ''
+  return new Date(isoTimestamp).toLocaleDateString('es-ES')
+}
+
+function tituloRondaPlayoff(tipo, numeroRelativo) {
+  if (tipo === 'final') return 'Gran Final'
+  if (tipo === 'wb') return `WB Ronda ${numeroRelativo}`
+  if (tipo === 'lb') return `LB Ronda ${numeroRelativo}`
+  return 'Ronda'
+}
+
+// Agrupa los partidos de playoff por ronda y calcula, para WB/LB, el número
+// relativo dentro de su lado (1, 2, 3... contando solo rondas del mismo tipo)
+// en vez del número absoluto de ronda de toda la liga — mismo criterio que
+// `contarRondaRelativa()` en torneo.service.js, pero calculado aquí en
+// cliente ya que los partidos ya traen ronda_tipo/ronda_numero resueltos.
+function agruparPlayoffPorRonda(partidos) {
+  const numerosPorTipo = { wb: new Set(), lb: new Set() }
+  for (const p of partidos) {
+    if (p.ronda_tipo === 'wb' || p.ronda_tipo === 'lb') numerosPorTipo[p.ronda_tipo].add(p.ronda_numero)
+  }
+  const ordenPorTipo = {
+    wb: [...numerosPorTipo.wb].sort((a, b) => a - b),
+    lb: [...numerosPorTipo.lb].sort((a, b) => a - b),
+  }
+
+  const porRondaId = new Map()
+  for (const p of partidos) {
+    if (!porRondaId.has(p.ronda_id)) porRondaId.set(p.ronda_id, [])
+    porRondaId.get(p.ronda_id).push(p)
+  }
+
+  const grupos = [...porRondaId.entries()].map(([rondaId, partidosRonda]) => {
+    const { ronda_tipo: tipo, ronda_numero: numero } = partidosRonda[0]
+    const numeroRelativo = tipo === 'wb' || tipo === 'lb' ? ordenPorTipo[tipo].indexOf(numero) + 1 : null
+    return { rondaId, tipo, numero, numeroRelativo, partidos: partidosRonda }
+  })
+
+  return grupos.sort((a, b) => a.numero - b.numero)
+}
+
+function PartidoTorneoCard({ partido, jugadorActualId, esAdmin, onEditar }) {
+  const res = resultadoParaJugador(partido, jugadorActualId)
+  const colorClass = COLOR_FONDO[res]
+  // No hay "la" ronda actual única (WB y LB pueden tener cada uno una en
+  // curso a la vez): si la ronda de ESTE partido sigue 'en_curso', se pasa su
+  // propio id como rondaActualId (coincide trivialmente); si no, se pasa null
+  // para que puedeEditarTorneo() lo trate como ronda cerrada.
+  const rondaActualId = partido.ronda_estado === 'en_curso' ? partido.ronda_id : null
+  const { puede } = puedeEditarTorneo(partido, rondaActualId, jugadorActualId, esAdmin)
+
+  const p1 = [partido.p1j1?.nombre, partido.p1j2?.nombre].filter(Boolean).join(' / ')
+  const p2 = [partido.p2j1?.nombre, partido.p2j2?.nombre].filter(Boolean).join(' / ')
+
+  return (
+    <Card className={`border ${colorClass}`}>
+      <CardContent className="px-2 sm:px-4 py-3 overflow-x-auto">
+        <div className="flex items-start justify-between gap-2 min-w-0">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-400 mb-1">{formatFecha(partido.created_at)}</p>
+            <p className="text-xs sm:text-sm font-semibold text-gray-900 leading-snug break-words">
+              {p1} <span className="text-gray-400 font-normal">vs</span> {p2}
+            </p>
+            {partido.resultado && (
+              <p className="text-sm sm:text-base font-bold text-gray-800 mt-1 tracking-wide">
+                {setsDisplay(partido)}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-2 shrink-0 max-w-[35%]">
+            {partido.resultado ? (() => {
+              const { label, className } = resultadoBadge(partido)
+              return (
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full truncate max-w-full ${className}`}>
+                  {label}
+                </span>
+              )
+            })() : (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">
+                Sin resultado
+              </span>
+            )}
+            {puede && (
+              <button
+                onClick={onEditar}
+                className="text-gray-400 hover:text-primary transition-colors p-1 -mr-1"
+                aria-label="Editar partido"
+              >
+                <Pencil className="size-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SeccionPartidosTorneo({ titulo, partidos, jugadorActualId, esAdmin, onEditar }) {
+  if (partidos.length === 0) return null
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{titulo}</p>
+      <div className="space-y-2">
+        {partidos.map((p) => (
+          <PartidoTorneoCard
+            key={p.id}
+            partido={p}
+            jugadorActualId={jugadorActualId}
+            esAdmin={esAdmin}
+            onEditar={() => onEditar(p)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PartidosTorneo() {
+  const { user } = useAuth()
+  const { ligaActiva, jugadorActual } = useLiga()
+
+  const [partidos, setPartidos] = useState([])
+  const [rol, setRol] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [partidoModal, setPartidoModal] = useState(null)
+
+  const esAdmin = rol === 'admin'
+  const jugadorActualId = jugadorActual?.id ?? null
+
+  useEffect(() => {
+    if (!ligaActiva?.id || !user?.id) return
+
+    async function cargar() {
+      try {
+        setLoading(true)
+        setError(null)
+        const [listaPartidos, miRol] = await Promise.all([
+          getTodosPartidosTorneo(ligaActiva.id),
+          getMiRolEnLiga(ligaActiva.id, user.id),
+        ])
+        setPartidos(listaPartidos)
+        setRol(miRol)
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    cargar()
+  }, [ligaActiva?.id, user?.id])
+
+  async function recargarPartidos() {
+    setPartidos(await getTodosPartidosTorneo(ligaActiva.id))
+  }
+
+  if (loading) {
+    return <p className="text-sm text-muted-foreground text-center py-8">Cargando partidos...</p>
+  }
+  if (error) {
+    return <p className="text-destructive text-sm text-center py-8">Error: {error}</p>
+  }
+
+  if (partidos.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-4xl mb-3">🎾</p>
+        <p className="text-sm text-muted-foreground">No hay partidos registrados aún</p>
+      </div>
+    )
+  }
+
+  const partidosSuiza = partidos.filter((p) => p.ronda_tipo === 'suiza')
+  const partidosExtra = partidos.filter((p) => p.ronda_tipo === 'extra')
+  const partidosPlayoff = partidos.filter((p) => ['wb', 'lb', 'final'].includes(p.ronda_tipo))
+  const gruposPlayoff = agruparPlayoffPorRonda(partidosPlayoff)
+
+  return (
+    <div className="space-y-5 pb-8">
+      <SeccionPartidosTorneo
+        titulo="Fase suiza"
+        partidos={partidosSuiza}
+        jugadorActualId={jugadorActualId}
+        esAdmin={esAdmin}
+        onEditar={setPartidoModal}
+      />
+      <SeccionPartidosTorneo
+        titulo="Ronda extra"
+        partidos={partidosExtra}
+        jugadorActualId={jugadorActualId}
+        esAdmin={esAdmin}
+        onEditar={setPartidoModal}
+      />
+
+      {gruposPlayoff.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Playoff</p>
+          {gruposPlayoff.map((grupo) => (
+            <SeccionPartidosTorneo
+              key={grupo.rondaId}
+              titulo={tituloRondaPlayoff(grupo.tipo, grupo.numeroRelativo)}
+              partidos={grupo.partidos}
+              jugadorActualId={jugadorActualId}
+              esAdmin={esAdmin}
+              onEditar={setPartidoModal}
+            />
+          ))}
+        </div>
+      )}
+
+      {partidoModal && (
+        <RegistrarResultadoModal
+          partido={partidoModal}
+          jugadorActualId={jugadorActualId}
+          esAdmin={esAdmin}
+          onClose={() => setPartidoModal(null)}
+          onGuardado={async () => {
+            setPartidoModal(null)
+            await recargarPartidos()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+export default function Partidos() {
+  const { ligaActiva } = useLiga()
+  if (ligaActiva?.tipo === 'torneo') return <PartidosTorneo />
+  return <PartidosEstandar />
 }

@@ -1466,3 +1466,145 @@ export async function crearRondaFinal(ligaId, jugadorIds) {
 
   return getRondaConPartidos(ligaId, ronda.id)
 }
+
+// ── Pestaña "Partidos" del torneo ────────────────────────────────────────────
+
+// A diferencia de la liga estándar, en el torneo solo se puede editar un
+// partido de la ronda que sigue 'en_curso' — en cuanto la ronda cierra
+// (`'finalizada'`), sus partidos pasan a ser de solo lectura para siempre,
+// aunque `puedeEditar()` en sí seguiría permitiéndolo (pareja que no usó su
+// edición). `rondaActualId` lo decide el llamador por cada partido (no hay
+// "la" ronda actual única: WB y LB pueden tener cada uno una ronda
+// 'en_curso' al mismo tiempo) — normalmente será `partido.ronda_id` cuando
+// `partido.ronda_estado === 'en_curso'`, y `null` en caso contrario.
+export function puedeEditarTorneo(partido, rondaActualId, jugadorActualId, esAdmin) {
+  if (partido.ronda_id !== rondaActualId) {
+    return { puede: false, pareja: null, motivo: 'ronda cerrada' }
+  }
+  return puedeEditar(partido, jugadorActualId, esAdmin)
+}
+
+// Todos los partidos del torneo (cualquier fase) con los nombres de los 4
+// jugadores ya resueltos y el tipo/número de su ronda, para la pestaña
+// "Partidos". Excluye los partidos de rondas aún en preview (todavía no
+// confirmadas por el admin) y ordena por número de ronda y luego por fecha
+// de creación — torneo_partidos no tiene columna `fecha` propia (se generan
+// automáticamente, no se registran a mano), a diferencia de `partidos`.
+export async function getTodosPartidosTorneo(ligaId) {
+  const [{ data: partidos, error: partidosError }, { data: jugadores, error: jugadoresError }] = await Promise.all([
+    supabase
+      .from('torneo_partidos')
+      .select('*, torneo_rondas ( tipo, numero, estado )')
+      .eq('liga_id', ligaId)
+      .eq('preview', false),
+    supabase.from('liga_jugadores').select('id, nombre').eq('liga_id', ligaId),
+  ])
+  if (partidosError) throw partidosError
+  if (jugadoresError) throw jugadoresError
+
+  const jugadorMap = Object.fromEntries((jugadores ?? []).map((j) => [j.id, j]))
+
+  return (partidos ?? [])
+    .map((p) => ({
+      ...p,
+      ronda_tipo: p.torneo_rondas?.tipo ?? null,
+      ronda_numero: p.torneo_rondas?.numero ?? null,
+      ronda_estado: p.torneo_rondas?.estado ?? null,
+      p1j1: jugadorMap[p.p1_jugador1_id] ?? null,
+      p1j2: jugadorMap[p.p1_jugador2_id] ?? null,
+      p2j1: jugadorMap[p.p2_jugador1_id] ?? null,
+      p2j2: jugadorMap[p.p2_jugador2_id] ?? null,
+    }))
+    .sort((a, b) => {
+      if (a.ronda_numero !== b.ronda_numero) return (a.ronda_numero ?? 0) - (b.ronda_numero ?? 0)
+      return new Date(a.created_at) - new Date(b.created_at)
+    })
+}
+
+// ── Pestaña "Mi Perfil" del torneo ───────────────────────────────────────────
+
+function ganoPartidoJugador(partido, jugadorId) {
+  return (
+    (partido.resultado === 'pareja1' && (partido.p1_jugador1_id === jugadorId || partido.p1_jugador2_id === jugadorId)) ||
+    (partido.resultado === 'pareja2' && (partido.p2_jugador1_id === jugadorId || partido.p2_jugador2_id === jugadorId))
+  )
+}
+
+// Estado de un jugador en el torneo para la pestaña "Mi Perfil": su récord de
+// fase suiza, si llegó al playoff y su récord ahí, si ya es campeón, y hasta
+// qué fase llegó una vez queda fuera. No usa `torneo_bracket.estado` para
+// detectar campeón/finalista porque `avanzarBracket()` no lo actualiza en la
+// Gran Final (ver comentario en avanzarBracket) — en su lugar busca
+// directamente si el jugador jugó una ronda `tipo='final'` y quién la ganó.
+export async function getParticipacionTorneoJugador(ligaId, jugadorId) {
+  const { data: participante, error: participanteError } = await supabase
+    .from('torneo_participantes')
+    .select('*')
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorId)
+    .maybeSingle()
+  if (participanteError) throw participanteError
+  if (!participante) return null
+
+  const resultado = {
+    estado: participante.estado,
+    victoriasSuiza: participante.victorias,
+    derrotasSuiza: participante.derrotas,
+    esCampeon: !!participante.campeon,
+    enPlayoff: false,
+    victoriasPlayoff: 0,
+    derrotasPlayoff: 0,
+    faseAlcanzada: null,
+  }
+
+  const { data: filaBracket, error: bracketError } = await supabase
+    .from('torneo_bracket')
+    .select('estado')
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorId)
+    .maybeSingle()
+  if (bracketError) throw bracketError
+  if (!filaBracket) return resultado
+
+  resultado.enPlayoff = true
+
+  const record = await calcularRecordPlayoff(ligaId)
+  resultado.victoriasPlayoff = record.get(jugadorId)?.victorias ?? 0
+  resultado.derrotasPlayoff = record.get(jugadorId)?.derrotas ?? 0
+
+  const { data: rondas, error: rondasError } = await supabase
+    .from('torneo_rondas')
+    .select('id, tipo, numero')
+    .eq('liga_id', ligaId)
+    .in('tipo', ['wb', 'lb', 'final'])
+  if (rondasError) throw rondasError
+  const rondaPorId = new Map(rondas.map((r) => [r.id, r]))
+  const rondaIds = rondas.map((r) => r.id)
+
+  const { data: partidosRondas, error: partidosError } = rondaIds.length === 0
+    ? { data: [], error: null }
+    : await supabase.from('torneo_partidos').select('*').in('ronda_id', rondaIds).eq('preview', false)
+  if (partidosError) throw partidosError
+
+  const jugados = (partidosRondas ?? [])
+    .filter((p) =>
+      (p.resultado === 'pareja1' || p.resultado === 'pareja2') &&
+      [p.p1_jugador1_id, p.p1_jugador2_id, p.p2_jugador1_id, p.p2_jugador2_id].includes(jugadorId)
+    )
+    .map((p) => ({ ...p, ronda: rondaPorId.get(p.ronda_id) }))
+    .sort((a, b) => b.ronda.numero - a.ronda.numero)
+
+  const partidoFinal = jugados.find((p) => p.ronda.tipo === 'final')
+  if (partidoFinal) {
+    resultado.faseAlcanzada = ganoPartidoJugador(partidoFinal, jugadorId) ? 'Campeón' : 'Finalista'
+  } else if (filaBracket.estado === 'eliminado') {
+    const ultimaDerrota = jugados.find((p) => !ganoPartidoJugador(p, jugadorId))
+    if (ultimaDerrota) {
+      const numeroRelativo = await contarRondaRelativa(ligaId, ultimaDerrota.ronda)
+      const nombreLado = ultimaDerrota.ronda.tipo === 'wb' ? 'WB' : 'LB'
+      resultado.faseAlcanzada = `Eliminado en ${nombreLado} Ronda ${numeroRelativo}`
+    }
+  }
+
+  return resultado
+}

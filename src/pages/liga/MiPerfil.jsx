@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLiga } from '../../context/LigaContext'
 import { calcularClasificacion } from '../../services/clasificacion.service'
 import { getPartidosConEstado, calcularEstadisticasPersonales } from '../../services/perfil.service'
+import { getParticipacionTorneoJugador, getTodosPartidosTorneo } from '../../services/torneo.service'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
@@ -156,9 +157,9 @@ function BottomSheet({ open, onClose, title, children }) {
   )
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+// ── Página principal (liga estándar) ────────────────────────────────────────
 
-export default function MiPerfil() {
+function MiPerfilEstandar() {
   const { ligaActiva, jugadorActual } = useLiga()
 
   const [loading, setLoading] = useState(true)
@@ -352,4 +353,179 @@ export default function MiPerfil() {
 
     </div>
   )
+}
+
+// ── Página principal (liga torneo) ──────────────────────────────────────────
+
+function estadoBadgeTorneo(participacion) {
+  if (participacion.esCampeon) return { label: '🏆 Campeón', className: 'bg-yellow-100 text-yellow-800' }
+  if (participacion.estado === 'eliminado') return { label: '❌ Eliminado', className: 'bg-red-100 text-red-800' }
+  if (participacion.estado === 'clasificado') return { label: '✅ Clasificado', className: 'bg-green-100 text-green-800' }
+  return { label: '🎾 Activo', className: 'bg-blue-100 text-blue-800' }
+}
+
+// El badge ya deja claro cuándo alguien es campeón, así que este texto solo
+// aporta algo nuevo para el resto de casos: finalista (perdió la Gran Final,
+// pero torneo_participantes.estado sigue en 'clasificado' porque
+// avanzarBracket() no lo toca ahí), eliminado en playoff (con la ronda
+// concreta) o eliminado directamente en fase suiza (nunca llegó al bracket).
+function faseAlcanzadaTexto(participacion) {
+  if (participacion.esCampeon) return null
+  if (participacion.faseAlcanzada) return participacion.faseAlcanzada
+  if (participacion.estado === 'eliminado' && !participacion.enPlayoff) return 'Eliminado en fase suiza'
+  return null
+}
+
+function MiPerfilTorneo() {
+  const { ligaActiva, jugadorActual } = useLiga()
+
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [participacion, setParticipacion] = useState(null)
+  const [misPartidos, setMisPartidos] = useState([])
+
+  useEffect(() => {
+    // Si falta jugadorActual, el render de abajo muestra directamente
+    // "Identifícate primero" sin llegar a consultar `loading`.
+    if (!ligaActiva?.id || !jugadorActual?.id) return
+
+    async function cargar() {
+      try {
+        setLoading(true)
+        setError(null)
+        const [datosParticipacion, todosPartidosTorneo] = await Promise.all([
+          getParticipacionTorneoJugador(ligaActiva.id, jugadorActual.id),
+          getTodosPartidosTorneo(ligaActiva.id),
+        ])
+        setParticipacion(datosParticipacion)
+        setMisPartidos(
+          todosPartidosTorneo
+            .filter((p) =>
+              [p.p1_jugador1_id, p.p1_jugador2_id, p.p2_jugador1_id, p.p2_jugador2_id].includes(jugadorActual.id)
+            )
+            // MiniPartidoCard/formatDate esperan `fecha` en formato YYYY-MM-DD;
+            // torneo_partidos no tiene esa columna (se generan solos, no se
+            // registran a mano), así que se deriva de `created_at`.
+            .map((p) => ({ ...p, fecha: p.created_at?.slice(0, 10) }))
+        )
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    cargar()
+  }, [ligaActiva?.id, jugadorActual?.id])
+
+  if (!jugadorActual) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-4xl mb-3">👤</p>
+        <p className="text-sm text-muted-foreground">Identifícate primero para ver tu perfil</p>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return <p className="text-sm text-muted-foreground text-center py-8">Cargando perfil...</p>
+  }
+
+  if (error) {
+    return <p className="text-destructive text-sm text-center py-8">Error: {error}</p>
+  }
+
+  if (!participacion) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-4xl mb-3">🎾</p>
+        <p className="text-sm text-muted-foreground">Aún no estás inscrito en este torneo</p>
+      </div>
+    )
+  }
+
+  const badge = estadoBadgeTorneo(participacion)
+  const faseTexto = faseAlcanzadaTexto(participacion)
+  const misPartidosSuiza = misPartidos.filter((p) => p.ronda_tipo === 'suiza' || p.ronda_tipo === 'extra')
+  const misPartidosPlayoff = misPartidos.filter((p) => ['wb', 'lb', 'final'].includes(p.ronda_tipo))
+
+  return (
+    <div className="space-y-4 pb-4">
+
+      {/* ── Sección 1: Mi participación ── */}
+      <Card>
+        <CardContent className="pt-6 pb-5">
+          <div className="flex flex-col items-center gap-2 mb-4">
+            <div className="size-16 rounded-full bg-green-100 flex items-center justify-center">
+              <span className="text-2xl font-bold text-green-700">
+                {jugadorActual.nombre.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900">{jugadorActual.nombre}</h2>
+            <span className={`text-sm font-semibold px-3 py-1 rounded-full ${badge.className}`}>
+              {badge.label}
+            </span>
+            {faseTexto && <p className="text-xs text-gray-500">{faseTexto}</p>}
+          </div>
+
+          <div className={`grid gap-3 ${participacion.enPlayoff ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className="bg-gray-50 rounded-xl px-3 py-3 text-center">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Fase suiza</p>
+              <p className="text-xl font-bold text-gray-900">
+                {participacion.victoriasSuiza}-{participacion.derrotasSuiza}
+              </p>
+            </div>
+            {participacion.enPlayoff && (
+              <div className="bg-gray-50 rounded-xl px-3 py-3 text-center">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Playoff</p>
+                <p className="text-xl font-bold text-gray-900">
+                  {participacion.victoriasPlayoff}-{participacion.derrotasPlayoff}
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Sección 2: Mis partidos en el torneo ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Mis partidos en el torneo</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          {misPartidos.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">Aún no has jugado ningún partido</p>
+          ) : (
+            <>
+              {misPartidosSuiza.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fase suiza</p>
+                  {misPartidosSuiza.map((p) => (
+                    <MiniPartidoCard key={p.id} partido={p} jugadorId={jugadorActual.id} />
+                  ))}
+                </div>
+              )}
+              {misPartidosPlayoff.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Playoff</p>
+                  {misPartidosPlayoff.map((p) => (
+                    <MiniPartidoCard key={p.id} partido={p} jugadorId={jugadorActual.id} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+    </div>
+  )
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+export default function MiPerfil() {
+  const { ligaActiva } = useLiga()
+  if (ligaActiva?.tipo === 'torneo') return <MiPerfilTorneo />
+  return <MiPerfilEstandar />
 }
