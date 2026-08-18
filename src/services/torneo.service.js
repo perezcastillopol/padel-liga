@@ -582,6 +582,78 @@ export async function registrarResultadoPartido(partidoId, resultado, sets, juga
   return { rondaCompleta: true }
 }
 
+// Participantes 'activo' del torneo que no tienen partido en esta ronda —
+// para ofrecer, al marcar un jugador ausente en fase suiza, sustituirlo por
+// alguien que ya está descansando en vez de dar directamente el W.O. (ver
+// sustituirJugadorEnPartido). No filtra por tipo de ronda: lo hace el
+// llamador (RegistrarResultadoModal solo lo pide para rondas 'suiza').
+export async function getJugadoresDescansandoRonda(ligaId, rondaId) {
+  const [participantes, { data: partidos, error: partidosError }] = await Promise.all([
+    getParticipantes(ligaId),
+    supabase
+      .from('torneo_partidos')
+      .select('p1_jugador1_id, p1_jugador2_id, p2_jugador1_id, p2_jugador2_id')
+      .eq('ronda_id', rondaId),
+  ])
+  if (partidosError) throw partidosError
+
+  const jugadoresConPartido = new Set()
+  for (const p of partidos ?? []) {
+    ;[p.p1_jugador1_id, p.p1_jugador2_id, p.p2_jugador1_id, p.p2_jugador2_id].forEach((id) => {
+      if (id) jugadoresConPartido.add(id)
+    })
+  }
+
+  return participantes.filter((p) => p.estado === 'activo' && !jugadoresConPartido.has(p.jugador_id))
+}
+
+// Sustituye a un jugador dentro de UN partido concreto de fase suiza (no es
+// permanente como sustituirJugador() del playoff: solo cambia quién ocupa esa
+// posición en ESTE partido, que sigue jugándose con normalidad — sin W.O. ni
+// ausente_id). Pensado para cuando, al marcar a alguien ausente, hay un
+// jugador descansando disponible (getJugadoresDescansandoRonda) y se prefiere
+// que juegue él en vez de dar el partido por W.O.
+export async function sustituirJugadorEnPartido(partidoId, jugadorAusenteId, jugadorSustitutoId) {
+  const { data: partido, error: partidoError } = await supabase
+    .from('torneo_partidos')
+    .select('*, torneo_rondas ( tipo )')
+    .eq('id', partidoId)
+    .single()
+  if (partidoError) throw partidoError
+
+  if (partido.torneo_rondas?.tipo !== 'suiza') {
+    throw new Error('Sustituir por un jugador que descansa solo está disponible en la fase suiza')
+  }
+  if (partido.resultado != null) {
+    throw new Error('El partido ya tiene un resultado registrado')
+  }
+
+  const columna = Object.values(POS_A_COLUMNA).find((col) => partido[col] === jugadorAusenteId)
+  if (!columna) throw new Error('El jugador ausente no pertenece a este partido')
+
+  const { error: updateError } = await supabase
+    .from('torneo_partidos')
+    .update({ [columna]: jugadorSustitutoId })
+    .eq('id', partidoId)
+  if (updateError) throw updateError
+
+  const { data: jugadores, error: jugadoresError } = await supabase
+    .from('liga_jugadores')
+    .select('id, nombre')
+    .eq('liga_id', partido.liga_id)
+  if (jugadoresError) throw jugadoresError
+  const jugadorMap = Object.fromEntries((jugadores ?? []).map((j) => [j.id, j]))
+
+  const actualizado = { ...partido, [columna]: jugadorSustitutoId }
+  return {
+    ...actualizado,
+    p1j1: jugadorMap[actualizado.p1_jugador1_id] ?? null,
+    p1j2: jugadorMap[actualizado.p1_jugador2_id] ?? null,
+    p2j1: jugadorMap[actualizado.p2_jugador1_id] ?? null,
+    p2j2: jugadorMap[actualizado.p2_jugador2_id] ?? null,
+  }
+}
+
 // Victorias/derrotas que aporta un partido a cada uno de sus 4 jugadores
 // según su resultado (o el reparto asimétrico de un jugador ausente) —
 // reutilizado tanto al cerrar una ronda por primera vez (cerrarRonda) como al

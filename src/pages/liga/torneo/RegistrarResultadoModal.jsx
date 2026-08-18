@@ -1,5 +1,9 @@
-import { useState } from 'react'
-import { registrarResultadoPartido } from '../../../services/torneo.service'
+import { useEffect, useState } from 'react'
+import {
+  registrarResultadoPartido,
+  getJugadoresDescansandoRonda,
+  sustituirJugadorEnPartido,
+} from '../../../services/torneo.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -86,18 +90,64 @@ export default function RegistrarResultadoModal({ partido, tipoRonda, jugadorAct
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
+  const [descansando, setDescansando] = useState(null) // null = aún no comprobado
+  const [cargandoDescansando, setCargandoDescansando] = useState(false)
+  const [continuarConWO, setContinuarConWO] = useState(false)
+  const [sustituyendoId, setSustituyendoId] = useState(null)
+
   const sets = { set1p1, set1p2, set2p1, set2p2, set3p1, set3p2 }
   const resultado = calcularResultado(sets, noFinalizado)
   const set1Completo = set1p1 !== '' && set1p2 !== ''
-  const canSave = marcarAusente ? !!ausenteId : (noFinalizado || set1Completo)
 
   const mostrarAusente = tipoRonda === 'suiza'
   const jugadoresPartido = [partido.p1j1, partido.p1j2, partido.p2j1, partido.p2j2].filter(Boolean)
   const resumenAusente = ausenteId ? datosAusente(partido, ausenteId) : null
 
+  // Antes de dar el W.O. por bueno, se ofrece sustituir al ausente por
+  // alguien que esté descansando esta ronda (getJugadoresDescansandoRonda) —
+  // solo si de verdad hay alguien disponible y el admin no ha elegido ya
+  // "Continuar con W.O.".
+  const hayDescansando = !!(descansando && descansando.length > 0)
+  const mostrarSustitucion = !!ausenteId && !cargandoDescansando && hayDescansando && !continuarConWO
+  const mostrarResumenWO = !!ausenteId && !cargandoDescansando && (!hayDescansando || continuarConWO)
+
+  const canSave = marcarAusente ? mostrarResumenWO : (noFinalizado || set1Completo)
+
+  useEffect(() => {
+    if (!marcarAusente) return
+    let cancelado = false
+    async function cargar() {
+      try {
+        setCargandoDescansando(true)
+        const data = await getJugadoresDescansandoRonda(partido.liga_id, partido.ronda_id)
+        if (!cancelado) setDescansando(data)
+      } catch (err) {
+        if (!cancelado) setError(err.message || 'Error al comprobar quién descansa')
+      } finally {
+        if (!cancelado) setCargandoDescansando(false)
+      }
+    }
+    cargar()
+    return () => { cancelado = true }
+  }, [marcarAusente, partido.liga_id, partido.ronda_id])
+
   function handleToggleAusente(activo) {
     setMarcarAusente(activo)
     setAusenteId('')
+    setContinuarConWO(false)
+    setDescansando(null)
+  }
+
+  async function handleSustituirDescansando(jugadorSustitutoId) {
+    try {
+      setSustituyendoId(jugadorSustitutoId)
+      setError(null)
+      await sustituirJugadorEnPartido(partido.id, ausenteId, jugadorSustitutoId)
+      onGuardado()
+    } catch (err) {
+      setError(err.message || 'Error al sustituir al jugador')
+      setSustituyendoId(null)
+    }
   }
 
   async function handleSubmit(e) {
@@ -178,7 +228,48 @@ export default function RegistrarResultadoModal({ partido, tipoRonda, jugadorAct
                 </div>
               )}
 
-              {resumenAusente && (
+              {ausenteId && cargandoDescansando && (
+                <p className="text-xs text-gray-500">Comprobando jugadores disponibles...</p>
+              )}
+
+              {mostrarSustitucion && (
+                <div className="space-y-2 border-t border-gray-100 pt-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Jugadores disponibles para sustituir
+                  </p>
+                  <div className="space-y-1.5">
+                    {descansando.map((p) => (
+                      <div key={p.jugador_id} className="flex items-center justify-between gap-2 py-1">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{p.jugador?.nombre ?? '—'}</p>
+                          <p className="text-xs text-gray-400">{p.victorias}-{p.derrotas}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled={!!sustituyendoId}
+                          onClick={() => handleSustituirDescansando(p.jugador_id)}
+                        >
+                          {sustituyendoId === p.jugador_id ? 'Sustituyendo...' : 'Sustituir'}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full text-sm"
+                    disabled={!!sustituyendoId}
+                    onClick={() => setContinuarConWO(true)}
+                  >
+                    Continuar con W.O.
+                  </Button>
+                </div>
+              )}
+
+              {mostrarResumenWO && resumenAusente && (
                 <div className="space-y-1 text-sm bg-gray-50 border border-gray-100 rounded-lg p-3">
                   <p><span className="font-semibold text-red-700">Jugador ausente:</span> {resumenAusente.ausente?.nombre ?? '—'} → derrota</p>
                   <p><span className="font-semibold text-gray-500">Compañero:</span> {resumenAusente.companero?.nombre ?? '—'} → no computa</p>
