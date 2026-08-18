@@ -823,6 +823,7 @@ function PartidosTorneo() {
       {partidoModal && (
         <RegistrarResultadoModal
           partido={partidoModal}
+          tipoRonda={partidoModal.ronda_tipo}
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
           onClose={() => setPartidoModal(null)}

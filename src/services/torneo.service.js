@@ -453,21 +453,56 @@ export async function getRondaActual(ligaId) {
   return { ...ronda, partidos, descansan, jugadorDescansoAnterior }
 }
 
-export async function registrarResultadoPartido(partidoId, resultado, sets, jugadorActualId, esAdmin) {
+export async function registrarResultadoPartido(partidoId, resultado, sets, jugadorActualId, esAdmin, ausenteId = null) {
   if (!esAdmin) throw new Error('No tienes permiso para registrar este resultado')
 
   const { data: partido, error: partidoError } = await supabase
     .from('torneo_partidos')
-    .select('*')
+    .select('*, torneo_rondas ( tipo, estado )')
     .eq('id', partidoId)
     .single()
   if (partidoError) throw partidoError
 
+  const tipoRonda = partido.torneo_rondas?.tipo
+  const esPlayoff = tipoRonda === 'wb' || tipoRonda === 'lb' || tipoRonda === 'final'
+  const rondaYaFinalizada = partido.torneo_rondas?.estado === 'finalizada'
+
+  if (ausenteId && tipoRonda !== 'suiza') {
+    throw new Error('Marcar jugador ausente solo está disponible en la fase suiza')
+  }
+  // Corregir un resultado de playoff ya cerrado no es seguro: avanzarBracket()
+  // ya movió a esos 4 jugadores (y puede haber creado rondas nuevas a partir
+  // de ese movimiento), así que no hay un "deshacer" simple como en fase
+  // suiza/extra — se bloquea en vez de arriesgar un estado de bracket
+  // inconsistente.
+  if (rondaYaFinalizada && esPlayoff) {
+    throw new Error('No se puede corregir un resultado de playoff una vez cerrada su ronda: el bracket ya avanzó a partir de él')
+  }
+
+  // Con jugador ausente, el resultado y los sets se derivan automáticamente:
+  // gana la pareja contraria a la del ausente y no se juega ningún set.
+  const ausenteEnPareja1 = partido.p1_jugador1_id === ausenteId || partido.p1_jugador2_id === ausenteId
+  const resultadoFinal = ausenteId ? (ausenteEnPareja1 ? 'pareja2' : 'pareja1') : resultado
+  const setsFinal = ausenteId
+    ? { set1_p1: null, set1_p2: null, set2_p1: null, set2_p2: null, set3_p1: null, set3_p2: null }
+    : sets
+
   const { error: updateError } = await supabase
     .from('torneo_partidos')
-    .update({ ...sets, resultado })
+    .update({ ...setsFinal, resultado: resultadoFinal, ausente_id: ausenteId })
     .eq('id', partidoId)
   if (updateError) throw updateError
+
+  if (rondaYaFinalizada) {
+    // La ronda ya estaba cerrada: esto es una corrección de un resultado ya
+    // contabilizado, no el cierre de la ronda. Se ajusta solo el delta de
+    // ESTE partido para sus 4 jugadores, sin reprocesar el resto de la ronda
+    // ni volver a tocar torneo_rondas.estado — si no, cerrarRonda() sumaría
+    // otra vez las victorias/derrotas ya aplicadas la primera vez.
+    const partidoNuevo = { ...partido, ...setsFinal, resultado: resultadoFinal, ausente_id: ausenteId }
+    await ajustarStatsPartidoCorregido(partido.liga_id, partido, partidoNuevo)
+    return { rondaCompleta: true }
+  }
 
   const { data: partidosRonda, error: partidosRondaError } = await supabase
     .from('torneo_partidos')
@@ -478,19 +513,93 @@ export async function registrarResultadoPartido(partidoId, resultado, sets, juga
   const rondaCompleta = partidosRonda.every((p) => p.resultado != null)
   if (!rondaCompleta) return { rondaCompleta: false }
 
-  const { data: ronda, error: rondaTipoError } = await supabase
-    .from('torneo_rondas')
-    .select('tipo')
-    .eq('id', partido.ronda_id)
-    .single()
-  if (rondaTipoError) throw rondaTipoError
-
-  if (ronda.tipo === 'wb' || ronda.tipo === 'lb' || ronda.tipo === 'final') {
+  if (esPlayoff) {
     await cerrarRondaPlayoff(partido.liga_id, partido.ronda_id)
   } else {
     await cerrarRonda(partido.liga_id, partido.ronda_id, partidosRonda)
   }
   return { rondaCompleta: true }
+}
+
+// Victorias/derrotas que aporta un partido a cada uno de sus 4 jugadores
+// según su resultado (o el reparto asimétrico de un jugador ausente) —
+// reutilizado tanto al cerrar una ronda por primera vez (cerrarRonda) como al
+// corregir un resultado ya contabilizado (ajustarStatsPartidoCorregido). Un
+// partido sin decidir o 'no_finalizado' no aporta nada.
+function contribucionPartido(p) {
+  const contrib = new Map()
+  if (!p.resultado || p.resultado === 'no_finalizado') return contrib
+
+  function sumar(jugadorId, campo) {
+    if (!jugadorId) return
+    const actual = contrib.get(jugadorId) ?? { victorias: 0, derrotas: 0 }
+    actual[campo] += 1
+    contrib.set(jugadorId, actual)
+  }
+
+  if (p.ausente_id) {
+    const ausenteEnPareja1 = p.p1_jugador1_id === p.ausente_id || p.p1_jugador2_id === p.ausente_id
+    const rivales = ausenteEnPareja1
+      ? [p.p2_jugador1_id, p.p2_jugador2_id]
+      : [p.p1_jugador1_id, p.p1_jugador2_id]
+    sumar(p.ausente_id, 'derrotas')
+    rivales.forEach((id) => sumar(id, 'victorias'))
+    return contrib
+  }
+
+  const ganadores = p.resultado === 'pareja1'
+    ? [p.p1_jugador1_id, p.p1_jugador2_id]
+    : [p.p2_jugador1_id, p.p2_jugador2_id]
+  const perdedores = p.resultado === 'pareja1'
+    ? [p.p2_jugador1_id, p.p2_jugador2_id]
+    : [p.p1_jugador1_id, p.p1_jugador2_id]
+  ganadores.forEach((id) => sumar(id, 'victorias'))
+  perdedores.forEach((id) => sumar(id, 'derrotas'))
+  return contrib
+}
+
+// Corrige las stats de un partido de fase suiza/extra cuya ronda YA estaba
+// finalizada, sin reprocesar el resto de la ronda: a cada uno de sus 4
+// jugadores se le resta la contribución que tenía el resultado anterior y se
+// le suma la del nuevo (p. ej. si antes ganaba pareja1 y ahora gana pareja2,
+// esos 4 jugadores ven revertida la victoria/derrota antigua y aplicada la
+// nueva). Solo se escribe para los jugadores realmente afectados por el
+// cambio, no para todos torneo_participantes.
+async function ajustarStatsPartidoCorregido(ligaId, partidoAnterior, partidoNuevo) {
+  const contribAnterior = contribucionPartido(partidoAnterior)
+  const contribNueva = contribucionPartido(partidoNuevo)
+  const jugadoresTocados = new Set([...contribAnterior.keys(), ...contribNueva.keys()])
+  if (jugadoresTocados.size === 0) return
+
+  const { data: liga, error: ligaError } = await supabase
+    .from('ligas')
+    .select('torneo_max_derrotas')
+    .eq('id', ligaId)
+    .single()
+  if (ligaError) throw ligaError
+
+  const participantes = await getParticipantes(ligaId)
+  const cambios = new Map(participantes.map((p) => [p.jugador_id, { ...p }]))
+
+  await Promise.all(
+    [...jugadoresTocados].map((jugadorId) => {
+      const c = cambios.get(jugadorId)
+      if (!c) return null
+
+      const antes = contribAnterior.get(jugadorId) ?? { victorias: 0, derrotas: 0 }
+      const despues = contribNueva.get(jugadorId) ?? { victorias: 0, derrotas: 0 }
+      c.victorias += despues.victorias - antes.victorias
+      c.derrotas += despues.derrotas - antes.derrotas
+      if (c.victorias >= liga.torneo_max_derrotas) c.estado = 'clasificado'
+      else if (c.derrotas >= liga.torneo_max_derrotas) c.estado = 'eliminado'
+      else c.estado = 'activo'
+
+      return supabase
+        .from('torneo_participantes')
+        .update({ victorias: c.victorias, derrotas: c.derrotas, estado: c.estado })
+        .eq('id', c.id)
+    })
+  )
 }
 
 async function cerrarRonda(ligaId, rondaId, partidosRonda) {
@@ -512,21 +621,12 @@ async function cerrarRonda(ligaId, rondaId, partidosRonda) {
   const tocados = new Set()
 
   for (const p of partidosRonda) {
-    if (p.resultado === 'no_finalizado') continue
-    const ganadores = p.resultado === 'pareja1'
-      ? [p.p1_jugador1_id, p.p1_jugador2_id]
-      : [p.p2_jugador1_id, p.p2_jugador2_id]
-    const perdedores = p.resultado === 'pareja1'
-      ? [p.p2_jugador1_id, p.p2_jugador2_id]
-      : [p.p1_jugador1_id, p.p1_jugador2_id]
-
-    for (const jugadorId of ganadores) {
+    for (const [jugadorId, { victorias, derrotas }] of contribucionPartido(p)) {
       const c = cambios.get(jugadorId)
-      if (c) { c.victorias += 1; tocados.add(jugadorId) }
-    }
-    for (const jugadorId of perdedores) {
-      const c = cambios.get(jugadorId)
-      if (c) { c.derrotas += 1; tocados.add(jugadorId) }
+      if (!c) continue
+      c.victorias += victorias
+      c.derrotas += derrotas
+      tocados.add(jugadorId)
     }
   }
 

@@ -488,7 +488,7 @@ function SeccionRondaActual({ ligaId, ronda, participantes, esAdmin, jugadorActu
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
           soloLectura={false}
-          onRegistrar={onRegistrar}
+          onRegistrar={(partido) => onRegistrar(partido, ronda.tipo)}
         />
       )}
 
@@ -1284,6 +1284,10 @@ export default function TorneoHome() {
     }
   }
 
+  function handleRegistrar(partido, tipoRonda) {
+    setPartidoModal({ partido, tipoRonda })
+  }
+
   if (loading) {
     return <p className="text-sm text-muted-foreground text-center py-8">Cargando torneo...</p>
   }
@@ -1308,7 +1312,7 @@ export default function TorneoHome() {
           ronda={ronda}
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
-          onRegistrar={setPartidoModal}
+          onRegistrar={handleRegistrar}
           onCambio={recargarTodo}
         />
       )
@@ -1321,7 +1325,7 @@ export default function TorneoHome() {
           ronda={ronda}
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
-          onRegistrar={setPartidoModal}
+          onRegistrar={handleRegistrar}
           onCambio={recargarTodo}
         />
       )
@@ -1334,7 +1338,7 @@ export default function TorneoHome() {
           participantes={participantes}
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
-          onRegistrar={setPartidoModal}
+          onRegistrar={handleRegistrar}
           onCambio={recargarTodo}
         />
       )
@@ -1358,7 +1362,8 @@ export default function TorneoHome() {
       {contenido}
       {partidoModal && (
         <RegistrarResultadoModal
-          partido={partidoModal}
+          partido={partidoModal.partido}
+          tipoRonda={partidoModal.tipoRonda}
           jugadorActualId={jugadorActualId}
           esAdmin={esAdmin}
           onClose={() => setPartidoModal(null)}
