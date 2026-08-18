@@ -51,6 +51,63 @@ export async function desinscribirJugador(ligaId, jugadorId) {
   if (error) throw error
 }
 
+// Marca a un participante como 'lesionado': igual que 'clasificado'/'eliminado',
+// generarParejasAleatorias() solo recibe participantes 'activo' (sus llamadores
+// filtran por ese estado antes de invocarla), así que un lesionado queda
+// automáticamente excluido de las siguientes rondas de fase suiza sin tocar
+// esa función. Solo disponible mientras torneo_estado === 'suiza' (gestionado
+// desde Configuracion.jsx).
+export async function marcarLesionado(ligaId, jugadorId) {
+  const { data, error } = await supabase
+    .from('torneo_participantes')
+    .update({ estado: 'lesionado' })
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Al desmarcar, no se vuelve sin más a 'activo': se recalcula el estado a
+// partir del record actual del jugador (por si mientras estaba lesionado se
+// corrigió algún resultado suyo de una ronda ya cerrada, ver
+// ajustarStatsPartidoCorregido) — si ese record ya alcanza
+// torneo_max_derrotas, el estado correcto es 'clasificado' o 'eliminado', no
+// 'activo'.
+export async function desmarcarLesionado(ligaId, jugadorId) {
+  const { data: liga, error: ligaError } = await supabase
+    .from('ligas')
+    .select('torneo_max_derrotas')
+    .eq('id', ligaId)
+    .single()
+  if (ligaError) throw ligaError
+
+  const { data: participante, error: participanteError } = await supabase
+    .from('torneo_participantes')
+    .select('victorias, derrotas')
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorId)
+    .single()
+  if (participanteError) throw participanteError
+
+  const nuevoEstado = participante.victorias >= liga.torneo_max_derrotas
+    ? 'clasificado'
+    : participante.derrotas >= liga.torneo_max_derrotas
+      ? 'eliminado'
+      : 'activo'
+
+  const { data, error } = await supabase
+    .from('torneo_participantes')
+    .update({ estado: nuevoEstado })
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 // ── Emparejamiento ────────────────────────────────────────────────────────────
 
 function contarRepeticiones(split, parejasPrevias) {
@@ -135,6 +192,9 @@ function formarPartidos(poolInicial, parejasPrevias) {
 // formado (puro o mixto) se elige la combinación 2 vs 2 que evite repetir
 // compañeros de fase suiza; si las tres combinaciones posibles repiten, se
 // acepta la repetición.
+// Recibe solo participantes 'activo' — 'clasificado', 'eliminado' y
+// 'lesionado' quedan excluidos por igual porque cada llamador filtra por ese
+// estado antes de invocarla (no hay ninguna comprobación de estado aquí).
 export function generarParejasAleatorias(participantes, parejasPrevias = new Set(), jugadorQueDescanso = null) {
   const grupos = new Map()
   for (const p of participantes) {

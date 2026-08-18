@@ -36,6 +36,7 @@ function ordenarPorRendimiento(participantes) {
 }
 
 function estadoInfo(p, maxDerrotas) {
+  if (p.estado === 'lesionado') return { label: '🤕 Lesionado', color: 'amber' }
   if (p.estado === 'clasificado') return { label: '✅ Clasificado', color: 'green' }
   if (p.estado === 'eliminado') return { label: '❌ Eliminado', color: 'red' }
   if (maxDerrotas != null && p.derrotas === maxDerrotas - 1) return { label: '⚠️ En riesgo', color: 'orange' }
@@ -45,6 +46,7 @@ function estadoInfo(p, maxDerrotas) {
 const COLOR_FILA = {
   green: 'bg-green-50 border-green-100',
   orange: 'bg-orange-50 border-orange-100',
+  amber: 'bg-amber-50 border-amber-100',
   red: 'bg-red-50 border-red-100',
   gray: 'bg-white border-gray-100',
 }
@@ -52,6 +54,7 @@ const COLOR_FILA = {
 const COLOR_TEXTO = {
   green: 'text-green-800',
   orange: 'text-orange-800',
+  amber: 'text-amber-800',
   red: 'text-red-800',
   gray: 'text-gray-900',
 }
@@ -59,6 +62,7 @@ const COLOR_TEXTO = {
 const COLOR_BADGE = {
   green: 'bg-green-100 text-green-800',
   orange: 'bg-orange-100 text-orange-800',
+  amber: 'bg-amber-100 text-amber-800',
   red: 'bg-red-100 text-red-800',
   gray: 'bg-gray-100 text-gray-600',
 }

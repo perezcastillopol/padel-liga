@@ -10,6 +10,7 @@ import {
   desarchivarJugador,
 } from '../../services/jugadores.service'
 import { getMiembros, cambiarRol } from '../../services/miembros.service'
+import { getParticipantes, marcarLesionado, desmarcarLesionado } from '../../services/torneo.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -772,6 +773,92 @@ function SeccionTorneo({ liga, onGuardado }) {
   )
 }
 
+// ── Sección 3c: Jugadores lesionados (solo torneo, solo fase suiza) ─────────
+
+function estadoParticipanteLabel(estado) {
+  if (estado === 'lesionado') return { label: '🤕 Lesionado', className: 'bg-orange-100 text-orange-800' }
+  if (estado === 'clasificado') return { label: '✅ Clasificado', className: 'bg-green-100 text-green-800' }
+  if (estado === 'eliminado') return { label: '❌ Eliminado', className: 'bg-red-100 text-red-800' }
+  return { label: 'Activo', className: 'bg-gray-100 text-gray-600' }
+}
+
+function SeccionLesionados({ ligaId, participantes, onCambio }) {
+  const [feedback, showFeedback] = useFeedback()
+  const [saving, setSaving] = useState({})
+
+  async function handleToggle(participante) {
+    const nombre = participante.jugador?.nombre ?? 'Jugador'
+    const marcando = participante.estado !== 'lesionado'
+    setSaving((prev) => ({ ...prev, [participante.id]: true }))
+    try {
+      const actualizado = marcando
+        ? await marcarLesionado(ligaId, participante.jugador_id)
+        : await desmarcarLesionado(ligaId, participante.jugador_id)
+      onCambio(participantes.map((p) =>
+        p.id === participante.id ? { ...p, estado: actualizado.estado } : p
+      ))
+      showFeedback('success', marcando ? `${nombre} marcado como lesionado` : `${nombre} ya no está lesionado`)
+    } catch (err) {
+      showFeedback('error', err.message || 'Error al actualizar el estado')
+    } finally {
+      setSaving((prev) => ({ ...prev, [participante.id]: false }))
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Jugadores lesionados</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {participantes.length === 0 && (
+          <p className="text-sm text-muted-foreground py-1">No hay jugadores inscritos en el torneo</p>
+        )}
+
+        {participantes.map((p) => {
+          const lesionado = p.estado === 'lesionado'
+          const { label, className } = estadoParticipanteLabel(p.estado)
+          return (
+            <div key={p.id} className="flex items-center gap-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{p.jugador?.nombre}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs text-muted-foreground">{p.victorias}-{p.derrotas}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${className}`}>
+                    {label}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggle(p)}
+                disabled={saving[p.id]}
+                aria-label={lesionado ? `Desmarcar a ${p.jugador?.nombre} como lesionado` : `Marcar a ${p.jugador?.nombre} como lesionado`}
+                className={[
+                  'relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 disabled:opacity-50',
+                  lesionado ? 'bg-orange-500' : 'bg-gray-200',
+                ].join(' ')}
+              >
+                <span
+                  className={[
+                    'inline-block size-4 rounded-full bg-white shadow transition-transform',
+                    lesionado ? 'translate-x-4' : 'translate-x-0.5',
+                  ].join(' ')}
+                />
+              </button>
+            </div>
+          )
+        })}
+
+        <p className="text-xs text-muted-foreground pt-2">
+          Los jugadores lesionados no participan en las siguientes rondas de la fase suiza.
+        </p>
+        <FeedbackMsg feedback={feedback} />
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Sección 4: Miembros con cuenta ────────────────────────────────────────────
 
 function SeccionMiembros({ ligaId, miembros, userId, onCambio }) {
@@ -868,6 +955,7 @@ export default function Configuracion() {
 
   const [jugadores, setJugadores] = useState([])
   const [miembros, setMiembros] = useState([])
+  const [participantesTorneo, setParticipantesTorneo] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -877,12 +965,14 @@ export default function Configuracion() {
     async function cargar() {
       try {
         setLoading(true)
-        const [todosJugadores, todosMiembros] = await Promise.all([
+        const [todosJugadores, todosMiembros, participantes] = await Promise.all([
           getTodosJugadoresLiga(ligaActiva.id),
           getMiembros(ligaActiva.id),
+          ligaActiva.tipo === 'torneo' ? getParticipantes(ligaActiva.id) : Promise.resolve([]),
         ])
         setJugadores(todosJugadores)
         setMiembros(todosMiembros)
+        setParticipantesTorneo(participantes)
       } catch (err) {
         setError(err.message)
       } finally {
@@ -891,7 +981,7 @@ export default function Configuracion() {
     }
 
     cargar()
-  }, [ligaActiva?.id])
+  }, [ligaActiva?.id, ligaActiva?.tipo])
 
   if (loading) {
     return <p className="text-sm text-muted-foreground text-center py-8">Cargando...</p>
@@ -915,6 +1005,13 @@ export default function Configuracion() {
         <SeccionTorneo key={`torneo-${ligaActiva.id}`} liga={ligaActiva} onGuardado={setLigaActiva} />
       ) : (
         <SeccionPuntuacion key={`puntuacion-${ligaActiva.id}`} liga={ligaActiva} onGuardado={setLigaActiva} />
+      )}
+      {ligaActiva.tipo === 'torneo' && ligaActiva.torneo_estado === 'suiza' && (
+        <SeccionLesionados
+          ligaId={ligaActiva.id}
+          participantes={participantesTorneo}
+          onCambio={setParticipantesTorneo}
+        />
       )}
       <SeccionMiembros
         ligaId={ligaActiva.id}
