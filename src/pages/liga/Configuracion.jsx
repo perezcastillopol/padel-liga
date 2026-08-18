@@ -10,7 +10,14 @@ import {
   desarchivarJugador,
 } from '../../services/jugadores.service'
 import { getMiembros, cambiarRol } from '../../services/miembros.service'
-import { getParticipantes, marcarLesionado, desmarcarLesionado } from '../../services/torneo.service'
+import {
+  getParticipantes,
+  marcarLesionado,
+  desmarcarLesionado,
+  getJugadoresActivosPlayoff,
+  getJugadoresElegiblesParaRepesca,
+  sustituirJugador,
+} from '../../services/torneo.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -859,6 +866,188 @@ function SeccionLesionados({ ligaId, participantes, onCambio }) {
   )
 }
 
+// ── Sección 3d: Sustituciones en playoff (solo torneo, solo playoff) ────────
+
+function ModalSustitucion({ ligaId, jugadorRetirado, onClose, onSustituido }) {
+  const [elegibles, setElegibles] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [sustitutoId, setSustitutoId] = useState(null)
+  const [confirmando, setConfirmando] = useState(false)
+
+  useEffect(() => {
+    let cancelado = false
+    getJugadoresElegiblesParaRepesca(ligaId)
+      .then((data) => { if (!cancelado) setElegibles(data) })
+      .catch((err) => { if (!cancelado) setError(err.message) })
+      .finally(() => { if (!cancelado) setLoading(false) })
+    return () => { cancelado = true }
+  }, [ligaId])
+
+  const sustituto = elegibles.find((p) => p.jugador_id === sustitutoId) ?? null
+
+  async function handleConfirmar() {
+    if (!sustituto) return
+    try {
+      setConfirmando(true)
+      setError(null)
+      await sustituirJugador(ligaId, jugadorRetirado.jugador_id, sustituto.jugador_id)
+      onSustituido()
+    } catch (err) {
+      setError(err.message || 'Error al sustituir al jugador')
+      setConfirmando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-xl font-bold mb-1">Retirar y sustituir</h2>
+        <p className="text-sm text-gray-500 mb-4">{jugadorRetirado.jugador?.nombre}</p>
+
+        {loading && <p className="text-sm text-muted-foreground py-2">Cargando jugadores elegibles...</p>}
+
+        {!loading && elegibles.length === 0 && (
+          <p className="text-sm text-muted-foreground py-2">No hay jugadores eliminados disponibles para repescar</p>
+        )}
+
+        {!loading && elegibles.length > 0 && (
+          <div className="space-y-1 mb-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Selecciona el sustituto
+            </p>
+            {elegibles.map((p) => (
+              <label key={p.jugador_id} className="flex items-center gap-3 py-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="sustituto"
+                  checked={sustitutoId === p.jugador_id}
+                  onChange={() => setSustitutoId(p.jugador_id)}
+                  className="size-4 accent-primary"
+                />
+                <span className="flex-1 text-sm font-medium truncate">{p.jugador?.nombre ?? '—'}</span>
+                <span className="text-xs text-gray-400 shrink-0">{p.victorias}-{p.derrotas}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {sustituto && (
+          <div className="bg-gray-50 rounded-lg px-3.5 py-3 mb-3 space-y-1.5">
+            <p className="text-sm font-semibold text-gray-900">¿Confirmar sustitución?</p>
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">{sustituto.jugador?.nombre}</span> reemplazará a{' '}
+              <span className="font-semibold">{jugadorRetirado.jugador?.nombre}</span> en el playoff
+            </p>
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">{sustituto.jugador?.nombre}</span> hereda el record de playoff de{' '}
+              {jugadorRetirado.jugador?.nombre} ({jugadorRetirado.victorias}-{jugadorRetirado.derrotas})
+            </p>
+          </div>
+        )}
+
+        {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose} disabled={confirmando}>
+            Cancelar
+          </Button>
+          <Button onClick={handleConfirmar} disabled={!sustituto || confirmando}>
+            {confirmando ? 'Sustituyendo...' : 'Confirmar sustitución'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SeccionSustituciones({ ligaId }) {
+  const [activos, setActivos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [jugadorRetirado, setJugadorRetirado] = useState(null)
+  const [feedback, showFeedback] = useFeedback()
+
+  async function cargar() {
+    try {
+      setLoading(true)
+      setActivos(await getJugadoresActivosPlayoff(ligaId))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    async function cargarInicial() {
+      try {
+        setLoading(true)
+        setActivos(await getJugadoresActivosPlayoff(ligaId))
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    cargarInicial()
+  }, [ligaId])
+
+  async function handleSustituido() {
+    setJugadorRetirado(null)
+    showFeedback('success', 'Sustitución realizada')
+    await cargar()
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Sustituciones en playoff</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          {loading && <p className="text-sm text-muted-foreground py-1">Cargando...</p>}
+          {error && <p className="text-destructive text-sm py-1">{error}</p>}
+          {!loading && activos.length === 0 && (
+            <p className="text-sm text-muted-foreground py-1">No hay jugadores activos en el playoff</p>
+          )}
+
+          {activos.map((f) => (
+            <div key={f.id} className="flex items-center gap-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{f.jugador?.nombre}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase">
+                    {f.lado}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{f.victorias}-{f.derrotas}</span>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setJugadorRetirado(f)}>
+                Retirar y sustituir
+              </Button>
+            </div>
+          ))}
+
+          <FeedbackMsg feedback={feedback} />
+        </CardContent>
+      </Card>
+
+      {jugadorRetirado && (
+        <ModalSustitucion
+          ligaId={ligaId}
+          jugadorRetirado={jugadorRetirado}
+          onClose={() => setJugadorRetirado(null)}
+          onSustituido={handleSustituido}
+        />
+      )}
+    </>
+  )
+}
+
 // ── Sección 4: Miembros con cuenta ────────────────────────────────────────────
 
 function SeccionMiembros({ ligaId, miembros, userId, onCambio }) {
@@ -1012,6 +1201,9 @@ export default function Configuracion() {
           participantes={participantesTorneo}
           onCambio={setParticipantesTorneo}
         />
+      )}
+      {ligaActiva.tipo === 'torneo' && ligaActiva.torneo_estado === 'playoff' && (
+        <SeccionSustituciones ligaId={ligaActiva.id} />
       )}
       <SeccionMiembros
         ligaId={ligaActiva.id}

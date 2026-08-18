@@ -359,6 +359,8 @@ function MiPerfilEstandar() {
 
 function estadoBadgeTorneo(participacion) {
   if (participacion.esCampeon) return { label: '🏆 Campeón', className: 'bg-yellow-100 text-yellow-800' }
+  if (participacion.estado === 'retirado') return { label: '🔄 Retirado', className: 'bg-orange-100 text-orange-800' }
+  if (participacion.estado === 'lesionado') return { label: '🤕 Lesionado', className: 'bg-orange-100 text-orange-800' }
   if (participacion.estado === 'eliminado') return { label: '❌ Eliminado', className: 'bg-red-100 text-red-800' }
   if (participacion.estado === 'clasificado') return { label: '✅ Clasificado', className: 'bg-green-100 text-green-800' }
   return { label: '🎾 Activo', className: 'bg-blue-100 text-blue-800' }

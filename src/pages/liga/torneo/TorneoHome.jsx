@@ -952,6 +952,11 @@ function FilaBracket({ fila }) {
         <p className={`text-sm font-medium truncate min-w-0 ${eliminado ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
           {fila.jugador?.nombre ?? '—'}
         </p>
+        {fila.sustituyeA && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 shrink-0 whitespace-nowrap">
+            🔄 Sustituto
+          </span>
+        )}
         {eliminado && (
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 shrink-0">
             Eliminado
@@ -963,6 +968,11 @@ function FilaBracket({ fila }) {
           </span>
         )}
       </div>
+      {fila.sustituyeA && (
+        <p className="text-xs text-gray-400 line-through truncate">
+          {fila.sustituyeA.nombre ?? '—'} · Retirado
+        </p>
+      )}
       <p className="text-xs text-gray-400">{fila.victorias}-{fila.derrotas}</p>
     </div>
   )

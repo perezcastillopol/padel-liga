@@ -24,12 +24,13 @@ export async function getParticipantes(ligaId) {
       derrotas,
       estado,
       seed,
-      liga_jugadores ( id, nombre, usuario_id )
+      sustituto_de,
+      jugador:liga_jugadores!jugador_id ( id, nombre, usuario_id )
     `)
     .eq('liga_id', ligaId)
     .order('seed', { ascending: true, nullsFirst: false })
   if (error) throw error
-  return data.map((p) => ({ ...p, jugador: p.liga_jugadores }))
+  return data
 }
 
 export async function inscribirJugador(ligaId, jugadorId) {
@@ -719,6 +720,11 @@ async function cerrarRonda(ligaId, rondaId, partidosRonda) {
 // Récord de victorias/derrotas SOLO del playoff (WB + LB + Gran Final),
 // calculado al vuelo a partir de torneo_partidos — no se guarda en
 // torneo_bracket para no duplicar estado. Devuelve un Map jugador_id -> {victorias, derrotas}.
+// Si un jugador sustituyó a otro (torneo_participantes.sustituto_de), hereda
+// también el récord que el retirado ya tenía acumulado antes de la
+// sustitución: los partidos que el retirado ya jugó no se reasignan (ver
+// sustituirJugador), así que sin este merge ese récord se perdería de la
+// vista del sustituto.
 async function calcularRecordPlayoff(ligaId) {
   const { data: rondas, error: rondasError } = await supabase
     .from('torneo_rondas')
@@ -729,33 +735,140 @@ async function calcularRecordPlayoff(ligaId) {
 
   const rondaIds = (rondas ?? []).map((r) => r.id)
   const record = new Map()
-  if (rondaIds.length === 0) return record
 
-  const { data: partidos, error: partidosError } = await supabase
-    .from('torneo_partidos')
-    .select('p1_jugador1_id, p1_jugador2_id, p2_jugador1_id, p2_jugador2_id, resultado')
-    .in('ronda_id', rondaIds)
-    .eq('preview', false)
-  if (partidosError) throw partidosError
+  if (rondaIds.length > 0) {
+    const { data: partidos, error: partidosError } = await supabase
+      .from('torneo_partidos')
+      .select('p1_jugador1_id, p1_jugador2_id, p2_jugador1_id, p2_jugador2_id, resultado')
+      .in('ronda_id', rondaIds)
+      .eq('preview', false)
+    if (partidosError) throw partidosError
 
-  function sumar(jugadorId, campo) {
-    if (!record.has(jugadorId)) record.set(jugadorId, { victorias: 0, derrotas: 0 })
-    record.get(jugadorId)[campo] += 1
+    function sumar(jugadorId, campo) {
+      if (!record.has(jugadorId)) record.set(jugadorId, { victorias: 0, derrotas: 0 })
+      record.get(jugadorId)[campo] += 1
+    }
+
+    for (const p of partidos ?? []) {
+      if (p.resultado == null || p.resultado === 'no_finalizado') continue
+      const ganadores = p.resultado === 'pareja1'
+        ? [p.p1_jugador1_id, p.p1_jugador2_id]
+        : [p.p2_jugador1_id, p.p2_jugador2_id]
+      const perdedores = p.resultado === 'pareja1'
+        ? [p.p2_jugador1_id, p.p2_jugador2_id]
+        : [p.p1_jugador1_id, p.p1_jugador2_id]
+      ganadores.forEach((id) => sumar(id, 'victorias'))
+      perdedores.forEach((id) => sumar(id, 'derrotas'))
+    }
   }
 
-  for (const p of partidos ?? []) {
-    if (p.resultado == null || p.resultado === 'no_finalizado') continue
-    const ganadores = p.resultado === 'pareja1'
-      ? [p.p1_jugador1_id, p.p1_jugador2_id]
-      : [p.p2_jugador1_id, p.p2_jugador2_id]
-    const perdedores = p.resultado === 'pareja1'
-      ? [p.p2_jugador1_id, p.p2_jugador2_id]
-      : [p.p1_jugador1_id, p.p1_jugador2_id]
-    ganadores.forEach((id) => sumar(id, 'victorias'))
-    perdedores.forEach((id) => sumar(id, 'derrotas'))
+  const { data: sustitutos, error: sustitutosError } = await supabase
+    .from('torneo_participantes')
+    .select('jugador_id, sustituto_de')
+    .eq('liga_id', ligaId)
+    .not('sustituto_de', 'is', null)
+  if (sustitutosError) throw sustitutosError
+
+  for (const s of sustitutos ?? []) {
+    const heredado = record.get(s.sustituto_de)
+    if (!heredado) continue
+    const actual = record.get(s.jugador_id) ?? { victorias: 0, derrotas: 0 }
+    record.set(s.jugador_id, {
+      victorias: actual.victorias + heredado.victorias,
+      derrotas: actual.derrotas + heredado.derrotas,
+    })
   }
 
   return record
+}
+
+// Todos los jugadores actualmente 'activo' en el playoff (WB o LB), con su
+// nombre, lado, posición inicial y récord de playoff — para la sección
+// "Sustituciones en playoff" de Configuracion.jsx. Reutiliza getEstadoPlayoff
+// en vez de duplicar las queries de torneo_bracket/calcularRecordPlayoff.
+export async function getJugadoresActivosPlayoff(ligaId) {
+  const { wb, lb } = await getEstadoPlayoff(ligaId)
+  return [...wb, ...lb].filter((f) => f.estado === 'activo')
+}
+
+// Participantes eliminados (de la fase suiza O del playoff) elegibles para
+// repescar como sustituto de un retirado del playoff — ordenados por mejor
+// record de fase suiza (menos derrotas primero, mismo criterio que el
+// repechaje de "Finalizar fase suiza"). Excluye a quien ya es sustituto de
+// otro (sustituto_de no nulo): no se admiten cadenas de sustitución.
+// torneo_participantes.estado NO basta para detectar un eliminado de
+// playoff: una vez un jugador llega a 'clasificado' en finalizarFaseSuiza(),
+// ese campo no se vuelve a tocar durante el playoff (avanzarBracket() solo
+// actualiza torneo_bracket.estado) — así que también hay que comprobar ahí.
+export async function getJugadoresElegiblesParaRepesca(ligaId) {
+  const [participantes, { data: bracketEliminados, error: bracketError }] = await Promise.all([
+    getParticipantes(ligaId),
+    supabase.from('torneo_bracket').select('jugador_id').eq('liga_id', ligaId).eq('estado', 'eliminado'),
+  ])
+  if (bracketError) throw bracketError
+  const eliminadosPlayoffIds = new Set((bracketEliminados ?? []).map((f) => f.jugador_id))
+
+  return participantes
+    .filter((p) =>
+      p.sustituto_de == null &&
+      (p.estado === 'eliminado' || (p.estado === 'clasificado' && eliminadosPlayoffIds.has(p.jugador_id)))
+    )
+    .sort((a, b) => a.derrotas - b.derrotas)
+}
+
+// Sustituye en el playoff a un jugador que se retira (jugadorRetiradoId) por
+// un jugador elegible para repesca (jugadorSustitutoId, ver
+// getJugadoresElegiblesParaRepesca). El sustituto ocupa la MISMA fila de
+// torneo_bracket (misma posición/lado/ronda/bye) y hereda los partidos
+// pendientes del retirado a partir de ahora. Los partidos ya jugados por el
+// retirado NO se reasignan — conservan su jugador_id real para no reescribir
+// el historial — así que "heredar el récord de playoff" se resuelve en
+// calcularRecordPlayoff() (merge a partir de sustituto_de), no copiando
+// números aquí.
+export async function sustituirJugador(ligaId, jugadorRetiradoId, jugadorSustitutoId) {
+  const { data: retirado, error: retiradoError } = await supabase
+    .from('torneo_participantes')
+    .select('estado')
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorRetiradoId)
+    .single()
+  if (retiradoError) throw retiradoError
+
+  const { error: retirarError } = await supabase
+    .from('torneo_participantes')
+    .update({ estado: 'retirado' })
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorRetiradoId)
+  if (retirarError) throw retirarError
+
+  const { error: sustitutoError } = await supabase
+    .from('torneo_participantes')
+    .update({ estado: retirado.estado, sustituto_de: jugadorRetiradoId })
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorSustitutoId)
+  if (sustitutoError) throw sustitutoError
+
+  const { error: bracketError } = await supabase
+    .from('torneo_bracket')
+    .update({ jugador_id: jugadorSustitutoId })
+    .eq('liga_id', ligaId)
+    .eq('jugador_id', jugadorRetiradoId)
+  if (bracketError) throw bracketError
+
+  // Solo los partidos aún sin resultado (de la ronda actual en adelante):
+  // dado que una ronda no se crea hasta que la anterior está cerrada (todos
+  // sus partidos con resultado), un partido de este jugador sin resultado
+  // solo puede pertenecer a una ronda de playoff todavía abierta, nunca a una
+  // ya finalizada.
+  for (const columna of Object.values(POS_A_COLUMNA)) {
+    const { error } = await supabase
+      .from('torneo_partidos')
+      .update({ [columna]: jugadorSustitutoId })
+      .eq('liga_id', ligaId)
+      .eq(columna, jugadorRetiradoId)
+      .is('resultado', null)
+    if (error) throw error
+  }
 }
 
 // Crea (en preview) la siguiente ronda de un lado del bracket (WB o LB) a
@@ -1061,12 +1174,38 @@ export async function getEstadoPlayoff(ligaId) {
   if (error) throw error
 
   const record = await calcularRecordPlayoff(ligaId)
+
+  // sustituyeA: si el jugador que ocupa esta fila sustituyó a otro, se
+  // resuelve aquí el nombre del retirado (para mostrarlo tachado en el
+  // bracket, ver FilaBracket en TorneoHome.jsx) en vez de dejar que la UI
+  // haga una query aparte.
+  const { data: sustitutos, error: sustitutosError } = await supabase
+    .from('torneo_participantes')
+    .select('jugador_id, sustituto_de')
+    .eq('liga_id', ligaId)
+    .not('sustituto_de', 'is', null)
+  if (sustitutosError) throw sustitutosError
+
+  const retiradoIdPorSustituto = new Map((sustitutos ?? []).map((s) => [s.jugador_id, s.sustituto_de]))
+  const retiradoIds = [...retiradoIdPorSustituto.values()]
+  let nombreRetiradoPorId = new Map()
+  if (retiradoIds.length > 0) {
+    const { data: jugadoresRetirados, error: jugadoresError } = await supabase
+      .from('liga_jugadores')
+      .select('id, nombre')
+      .in('id', retiradoIds)
+    if (jugadoresError) throw jugadoresError
+    nombreRetiradoPorId = new Map((jugadoresRetirados ?? []).map((j) => [j.id, j.nombre]))
+  }
+
   function enriquecer(f) {
+    const retiradoId = retiradoIdPorSustituto.get(f.jugador_id) ?? null
     return {
       ...f,
       jugador: f.liga_jugadores,
       victorias: record.get(f.jugador_id)?.victorias ?? 0,
       derrotas: record.get(f.jugador_id)?.derrotas ?? 0,
+      sustituyeA: retiradoId ? { id: retiradoId, nombre: nombreRetiradoPorId.get(retiradoId) ?? null } : null,
     }
   }
 
@@ -1699,6 +1838,31 @@ export async function getParticipacionTorneoJugador(ligaId, jugadorId) {
     victoriasPlayoff: 0,
     derrotasPlayoff: 0,
     faseAlcanzada: null,
+  }
+
+  // Un jugador 'retirado' del playoff (ver sustituirJugador) ya no tiene fila
+  // propia en torneo_bracket — se reasignó a quien lo sustituyó — así que su
+  // paso por el playoff no se puede detectar buscando ahí por jugador_id. Se
+  // busca en su lugar quién lo sustituyó (torneo_participantes.sustituto_de);
+  // su récord de playoff (los partidos que ya jugó antes de retirarse, que
+  // conservan su jugador_id real) lo sigue devolviendo calcularRecordPlayoff()
+  // sin más cambios.
+  if (participante.estado === 'retirado') {
+    const { data: sustituto, error: sustitutoError } = await supabase
+      .from('torneo_participantes')
+      .select('jugador:liga_jugadores!jugador_id ( nombre )')
+      .eq('liga_id', ligaId)
+      .eq('sustituto_de', jugadorId)
+      .maybeSingle()
+    if (sustitutoError) throw sustitutoError
+    if (!sustituto) return resultado
+
+    resultado.enPlayoff = true
+    const record = await calcularRecordPlayoff(ligaId)
+    resultado.victoriasPlayoff = record.get(jugadorId)?.victorias ?? 0
+    resultado.derrotasPlayoff = record.get(jugadorId)?.derrotas ?? 0
+    resultado.faseAlcanzada = `Retirado (lo sustituyó ${sustituto.jugador?.nombre ?? '—'})`
+    return resultado
   }
 
   const { data: filaBracket, error: bracketError } = await supabase
