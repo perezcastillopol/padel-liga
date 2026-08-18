@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../context/AuthContext'
 import { useLiga } from '../../../context/LigaContext'
 import { getMiRolEnLiga, getLigaById } from '../../../services/ligas.service'
-import { puedeEditar } from '../../../services/partidos.service'
 import {
   getParticipantes,
   getRondaActual,
@@ -20,6 +19,7 @@ import {
   finalizarTorneo,
   getClasificacionPlayoff,
   getTorneoStats,
+  puedeEditarTorneo,
 } from '../../../services/torneo.service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -127,8 +127,8 @@ function TablaClasificacionSuiza({ participantes, maxDerrotas, titulo = 'Clasifi
 
 // ── Partidos de la ronda ──────────────────────────────────────────────────────
 
-function PartidoRondaCard({ partido, jugadorActualId, esAdmin, soloLectura, onRegistrar }) {
-  const { puede } = puedeEditar(partido, jugadorActualId, esAdmin)
+function PartidoRondaCard({ partido, esAdmin, soloLectura, onRegistrar }) {
+  const { puede } = puedeEditarTorneo(esAdmin)
   const tieneResultado = !!partido.resultado
 
   return (

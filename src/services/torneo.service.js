@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase'
-import { puedeEditar } from './partidos.service'
 
 function barajar(array) {
   const result = [...array]
@@ -455,6 +454,8 @@ export async function getRondaActual(ligaId) {
 }
 
 export async function registrarResultadoPartido(partidoId, resultado, sets, jugadorActualId, esAdmin) {
+  if (!esAdmin) throw new Error('No tienes permiso para registrar este resultado')
+
   const { data: partido, error: partidoError } = await supabase
     .from('torneo_partidos')
     .select('*')
@@ -462,17 +463,9 @@ export async function registrarResultadoPartido(partidoId, resultado, sets, juga
     .single()
   if (partidoError) throw partidoError
 
-  const { puede, pareja } = puedeEditar(partido, jugadorActualId, esAdmin)
-  if (!puede) throw new Error('No tienes permiso para registrar este resultado')
-
-  const extra =
-    pareja === 'p1' ? { editado_por_p1: true }
-      : pareja === 'p2' ? { editado_por_p2: true }
-        : {}
-
   const { error: updateError } = await supabase
     .from('torneo_partidos')
-    .update({ ...sets, resultado, ...extra })
+    .update({ ...sets, resultado })
     .eq('id', partidoId)
   if (updateError) throw updateError
 
@@ -1469,19 +1462,11 @@ export async function crearRondaFinal(ligaId, jugadorIds) {
 
 // ── Pestaña "Partidos" del torneo ────────────────────────────────────────────
 
-// A diferencia de la liga estándar, en el torneo solo se puede editar un
-// partido de la ronda que sigue 'en_curso' — en cuanto la ronda cierra
-// (`'finalizada'`), sus partidos pasan a ser de solo lectura para siempre,
-// aunque `puedeEditar()` en sí seguiría permitiéndolo (pareja que no usó su
-// edición). `rondaActualId` lo decide el llamador por cada partido (no hay
-// "la" ronda actual única: WB y LB pueden tener cada uno una ronda
-// 'en_curso' al mismo tiempo) — normalmente será `partido.ronda_id` cuando
-// `partido.ronda_estado === 'en_curso'`, y `null` en caso contrario.
-export function puedeEditarTorneo(partido, rondaActualId, jugadorActualId, esAdmin) {
-  if (partido.ronda_id !== rondaActualId) {
-    return { puede: false, pareja: null, motivo: 'ronda cerrada' }
-  }
-  return puedeEditar(partido, jugadorActualId, esAdmin)
+// A diferencia de la liga estándar, en el torneo solo el admin puede
+// registrar y modificar resultados — los jugadores no pueden editar ni
+// siquiera los partidos en los que juegan.
+export function puedeEditarTorneo(esAdmin) {
+  return { puede: esAdmin, pareja: null }
 }
 
 // Todos los partidos del torneo (cualquier fase) con los nombres de los 4
@@ -1494,7 +1479,7 @@ export async function getTodosPartidosTorneo(ligaId) {
   const [{ data: partidos, error: partidosError }, { data: jugadores, error: jugadoresError }] = await Promise.all([
     supabase
       .from('torneo_partidos')
-      .select('*, torneo_rondas ( tipo, numero, estado )')
+      .select('*, torneo_rondas ( tipo, numero )')
       .eq('liga_id', ligaId)
       .eq('preview', false),
     supabase.from('liga_jugadores').select('id, nombre').eq('liga_id', ligaId),
@@ -1509,7 +1494,6 @@ export async function getTodosPartidosTorneo(ligaId) {
       ...p,
       ronda_tipo: p.torneo_rondas?.tipo ?? null,
       ronda_numero: p.torneo_rondas?.numero ?? null,
-      ronda_estado: p.torneo_rondas?.estado ?? null,
       p1j1: jugadorMap[p.p1_jugador1_id] ?? null,
       p1j2: jugadorMap[p.p1_jugador2_id] ?? null,
       p2j1: jugadorMap[p.p2_jugador1_id] ?? null,

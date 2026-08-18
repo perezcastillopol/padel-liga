@@ -657,12 +657,7 @@ function agruparPlayoffPorRonda(partidos) {
 function PartidoTorneoCard({ partido, jugadorActualId, esAdmin, onEditar }) {
   const res = resultadoParaJugador(partido, jugadorActualId)
   const colorClass = COLOR_FONDO[res]
-  // No hay "la" ronda actual única (WB y LB pueden tener cada uno una en
-  // curso a la vez): si la ronda de ESTE partido sigue 'en_curso', se pasa su
-  // propio id como rondaActualId (coincide trivialmente); si no, se pasa null
-  // para que puedeEditarTorneo() lo trate como ronda cerrada.
-  const rondaActualId = partido.ronda_estado === 'en_curso' ? partido.ronda_id : null
-  const { puede } = puedeEditarTorneo(partido, rondaActualId, jugadorActualId, esAdmin)
+  const { puede } = puedeEditarTorneo(esAdmin)
 
   const p1 = [partido.p1j1?.nombre, partido.p1j2?.nombre].filter(Boolean).join(' / ')
   const p2 = [partido.p2j1?.nombre, partido.p2j2?.nombre].filter(Boolean).join(' / ')
