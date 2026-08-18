@@ -654,10 +654,17 @@ function agruparPlayoffPorRonda(partidos) {
   return grupos.sort((a, b) => a.numero - b.numero)
 }
 
+function nombreAusente(partido) {
+  if (!partido.ausente_id) return null
+  const jugadores = [partido.p1j1, partido.p1j2, partido.p2j1, partido.p2j2]
+  return jugadores.find((j) => j?.id === partido.ausente_id)?.nombre ?? null
+}
+
 function PartidoTorneoCard({ partido, jugadorActualId, esAdmin, onEditar }) {
   const res = resultadoParaJugador(partido, jugadorActualId)
   const colorClass = COLOR_FONDO[res]
   const { puede } = puedeEditarTorneo(esAdmin)
+  const ausente = nombreAusente(partido)
 
   const p1 = [partido.p1j1?.nombre, partido.p1j2?.nombre].filter(Boolean).join(' / ')
   const p2 = [partido.p2j1?.nombre, partido.p2j2?.nombre].filter(Boolean).join(' / ')
@@ -672,9 +679,18 @@ function PartidoTorneoCard({ partido, jugadorActualId, esAdmin, onEditar }) {
               {p1} <span className="text-gray-400 font-normal">vs</span> {p2}
             </p>
             {partido.resultado && (
-              <p className="text-sm sm:text-base font-bold text-gray-800 mt-1 tracking-wide">
-                {setsDisplay(partido)}
-              </p>
+              ausente ? (
+                <span className="inline-block text-xs font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 mt-1">
+                  W.O.
+                </span>
+              ) : (
+                <p className="text-sm sm:text-base font-bold text-gray-800 mt-1 tracking-wide">
+                  {setsDisplay(partido)}
+                </p>
+              )
+            )}
+            {ausente && (
+              <p className="text-xs text-red-600 mt-1">❌ {ausente} no jugó</p>
             )}
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0 max-w-[35%]">

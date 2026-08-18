@@ -81,6 +81,12 @@ function ganadorLabel(partido) {
   return 'No finalizado'
 }
 
+function nombreAusente(partido) {
+  if (!partido.ausente_id) return null
+  const jugadores = [partido.p1j1, partido.p1j2, partido.p2j1, partido.p2j2]
+  return jugadores.find((j) => j?.id === partido.ausente_id)?.nombre ?? null
+}
+
 // ── Tabla de clasificación suiza ──────────────────────────────────────────────
 
 function TablaClasificacionSuiza({ participantes, maxDerrotas, titulo = 'Clasificación' }) {
@@ -130,6 +136,7 @@ function TablaClasificacionSuiza({ participantes, maxDerrotas, titulo = 'Clasifi
 function PartidoRondaCard({ partido, esAdmin, soloLectura, onRegistrar }) {
   const { puede } = puedeEditarTorneo(esAdmin)
   const tieneResultado = !!partido.resultado
+  const ausente = nombreAusente(partido)
 
   return (
     <Card>
@@ -141,16 +148,23 @@ function PartidoRondaCard({ partido, esAdmin, soloLectura, onRegistrar }) {
         </div>
 
         {tieneResultado ? (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-bold text-gray-800 tracking-wide">{setsDisplay(partido)}</span>
-            <span
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                partido.resultado === 'no_finalizado' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
-              }`}
-            >
-              {ganadorLabel(partido)}
-            </span>
-          </div>
+          <>
+            <div className="flex items-center justify-between gap-2">
+              {ausente ? (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">W.O.</span>
+              ) : (
+                <span className="text-sm font-bold text-gray-800 tracking-wide">{setsDisplay(partido)}</span>
+              )}
+              <span
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                  partido.resultado === 'no_finalizado' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+                }`}
+              >
+                {ganadorLabel(partido)}
+              </span>
+            </div>
+            {ausente && <p className="text-xs text-red-600">❌ {ausente} no jugó</p>}
+          </>
         ) : (
           !soloLectura && puede && (
             <Button size="sm" variant="outline" className="w-full" onClick={onRegistrar}>
