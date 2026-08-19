@@ -22,6 +22,16 @@ export async function getSession() {
   return data.session
 }
 
+export async function getPuedeCrearLiga(userId) {
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('puede_crear_liga')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return data?.puede_crear_liga ?? false
+}
+
 export function onAuthStateChange(callback) {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
     callback(session)

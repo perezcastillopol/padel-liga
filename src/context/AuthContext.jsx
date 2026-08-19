@@ -1,7 +1,13 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { getSession, onAuthStateChange } from '../services/auth.service'
+import { getSession, onAuthStateChange, getPuedeCrearLiga } from '../services/auth.service'
 
 const AuthContext = createContext(null)
+
+async function construirUsuario(sessionUser) {
+  if (!sessionUser) return null
+  const puede_crear_liga = await getPuedeCrearLiga(sessionUser.id)
+  return { ...sessionUser, puede_crear_liga }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -12,14 +18,14 @@ export function AuthProvider({ children }) {
     async function initSession() {
       const s = await getSession()
       setSession(s)
-      setUser(s?.user ?? null)
+      setUser(await construirUsuario(s?.user ?? null))
       setLoading(false)
     }
     initSession()
 
-    const subscription = onAuthStateChange((s) => {
+    const subscription = onAuthStateChange(async (s) => {
       setSession(s)
-      setUser(s?.user ?? null)
+      setUser(await construirUsuario(s?.user ?? null))
       setLoading(false)
     })
 

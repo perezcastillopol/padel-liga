@@ -52,6 +52,14 @@ export async function getMisLigas(userId) {
 }
 
 export async function crearLiga(userId, { nombre, descripcion, tipo = 'estandar', config = {}, torneoConfig = {} }) {
+  const { data: usuario, error: usuarioError } = await supabase
+    .from('usuarios')
+    .select('puede_crear_liga')
+    .eq('id', userId)
+    .maybeSingle()
+  if (usuarioError) throw usuarioError
+  if (!usuario?.puede_crear_liga) throw new Error('No tienes permiso para crear ligas')
+
   const codigo_invitacion = generateInviteCode()
   const esTorneo = tipo === 'torneo'
 

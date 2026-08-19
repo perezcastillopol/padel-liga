@@ -391,7 +391,7 @@ function LigaCard({ liga, onEntrar }) {
 
 // ── FAB (botón flotante) ──────────────────────────────────────────────────────
 
-function FAB({ onCrear, onUnirse }) {
+function FAB({ onCrear, onUnirse, puedeCrear }) {
   const [abierto, setAbierto] = useState(false)
 
   return (
@@ -400,13 +400,15 @@ function FAB({ onCrear, onUnirse }) {
         <div className="absolute bottom-6 right-6 pointer-events-auto flex flex-col items-end gap-2.5">
           {abierto && (
             <>
-              <Button
-                variant="secondary"
-                className="shadow-md whitespace-nowrap"
-                onClick={() => { setAbierto(false); onCrear() }}
-              >
-                Crear liga
-              </Button>
+              {puedeCrear && (
+                <Button
+                  variant="secondary"
+                  className="shadow-md whitespace-nowrap"
+                  onClick={() => { setAbierto(false); onCrear() }}
+                >
+                  Crear liga
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 className="shadow-md whitespace-nowrap"
@@ -515,11 +517,18 @@ export default function MisLigas() {
               Aún no formas parte de ninguna liga
             </p>
             <div className="flex gap-3 justify-center flex-wrap">
-              <Button onClick={() => setModal('crear')}>Crear liga</Button>
+              {user.puede_crear_liga && (
+                <Button onClick={() => setModal('crear')}>Crear liga</Button>
+              )}
               <Button variant="outline" onClick={() => setModal('unirse')}>
                 Unirme con código
               </Button>
             </div>
+            {!user.puede_crear_liga && (
+              <p className="text-xs text-gray-400 mt-4">
+                Contacta con el organizador para crear una liga
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -531,7 +540,11 @@ export default function MisLigas() {
       </main>
 
       {ligas.length > 0 && (
-        <FAB onCrear={() => setModal('crear')} onUnirse={() => setModal('unirse')} />
+        <FAB
+          onCrear={() => setModal('crear')}
+          onUnirse={() => setModal('unirse')}
+          puedeCrear={user.puede_crear_liga}
+        />
       )}
 
       {modal === 'crear' && (
