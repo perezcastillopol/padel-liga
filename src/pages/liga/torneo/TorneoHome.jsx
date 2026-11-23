@@ -14,6 +14,7 @@ import {
   verificarParejasRepetidas,
   finalizarFaseSuiza,
   crearRondaFinal,
+  eliminarRondaVacia,
   calcularCorteFinalSuiza,
   getEstadoPlayoff,
   finalizarTorneo,
@@ -317,7 +318,7 @@ function ListaDescansan({ jugadorIds, participantesPorJugadorId, seleccion, onTa
 // ── Sección "ronda actual" con soporte de preview/generación manual ──────────
 
 function SeccionRondaActual({ ligaId, ronda, participantes, esAdmin, jugadorActualId, onRegistrar, onCambio }) {
-  const [accion, setAccion] = useState(null) // 'generando' | 'repitiendo' | 'confirmando'
+  const [accion, setAccion] = useState(null) // 'generando' | 'repitiendo' | 'confirmando' | 'eliminando'
   const [error, setError] = useState(null)
   const [partidosLocal, setPartidosLocal] = useState(ronda?.partidos ?? [])
   const [parejasPrevias, setParejasPrevias] = useState(new Set())
@@ -370,6 +371,19 @@ function SeccionRondaActual({ ligaId, ronda, participantes, esAdmin, jugadorActu
       onCambio()
     } catch (err) {
       setError(err.message || 'Error al repetir el sorteo')
+    } finally {
+      setAccion(null)
+    }
+  }
+
+  async function handleEliminarVacia() {
+    try {
+      setAccion('eliminando')
+      setError(null)
+      await eliminarRondaVacia(ligaId, ronda.id)
+      onCambio()
+    } catch (err) {
+      setError(err.message || 'Error al eliminar la ronda')
     } finally {
       setAccion(null)
     }
@@ -467,6 +481,30 @@ function SeccionRondaActual({ ligaId, ronda, participantes, esAdmin, jugadorActu
         </p>
         <Button className="w-full" onClick={handleGenerar} disabled={accion === 'generando'}>
           {accion === 'generando' ? 'Generando...' : 'Generar siguiente ronda'}
+        </Button>
+        {error && <p className="text-destructive text-sm text-center">{error}</p>}
+      </div>
+    )
+  }
+
+  // A swiss round without matches can never be closed (rounds close when
+  // their matches get a result), so the admin has to delete it.
+  if (ronda.tipo === 'suiza' && ronda.partidos.length === 0) {
+    if (!esAdmin) {
+      return (
+        <p className="text-sm text-muted-foreground text-center py-6">
+          Esta ronda no tiene partidos. El admin la resolverá
+        </p>
+      )
+    }
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground text-center py-2">
+          Esta ronda no tiene ningún partido (no había suficientes jugadores activos para formarlos), así que no
+          se puede cerrar. Elimínala para poder finalizar la fase suiza.
+        </p>
+        <Button variant="outline" className="w-full" onClick={handleEliminarVacia} disabled={!!accion}>
+          {accion === 'eliminando' ? 'Eliminando...' : 'Eliminar ronda vacía'}
         </Button>
         {error && <p className="text-destructive text-sm text-center">{error}</p>}
       </div>
@@ -643,6 +681,8 @@ function ModalFinalizarFaseSuiza({ ligaId, participantes, minClasificados, onClo
 
   const [numClasifican, setNumClasifican] = useState(String(defaultNum))
   const [repescados, setRepescados] = useState(new Set())
+  const [modoEmpate, setModoEmpate] = useState('extra') // 'extra' | 'elegir'
+  const [elegidosEmpate, setElegidosEmpate] = useState(new Set())
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState(null)
 
@@ -651,13 +691,38 @@ function ModalFinalizarFaseSuiza({ ligaId, participantes, minClasificados, onClo
   const esPar = numValido && num % 2 === 0
   const cumpleMinimo = !numValido || minClasificados == null || num >= minClasificados
 
-  const corte = numValido ? calcularCorteFinalSuiza(participantes, num, repescados) : null
+  const corte = numValido
+    ? calcularCorteFinalSuiza(participantes, num, repescados, modoEmpate === 'elegir' ? elegidosEmpate : new Set())
+    : null
+  const hayEmpate = corte ? corte.candidatosZonaGris.length > 0 : false
+  const eleccionCompleta = corte ? elegidosEmpate.size === corte.plazasZonaGris : false
   const repechajeCompleto = corte ? repescados.size === corte.necesitanRepescar : false
   const necesitaRepechaje = corte ? corte.necesitanRepescar > 0 : false
 
-  const esValido = numValido && esPar && cumpleMinimo && (!corte || corte.necesitanRepescar === 0 || repechajeCompleto)
+  const esValido =
+    numValido &&
+    esPar &&
+    cumpleMinimo &&
+    (!corte || corte.necesitanRepescar === 0 || repechajeCompleto) &&
+    (!hayEmpate || modoEmpate === 'extra' || eleccionCompleta)
+
+  // Any change to the cut invalidates a previous manual tie-break selection.
+  function cambiarNum(valor) {
+    setNumClasifican(valor)
+    setElegidosEmpate(new Set())
+  }
+
+  function toggleElegidoEmpate(jugadorId) {
+    setElegidosEmpate((prev) => {
+      const next = new Set(prev)
+      if (next.has(jugadorId)) next.delete(jugadorId)
+      else next.add(jugadorId)
+      return next
+    })
+  }
 
   function toggleRepescado(jugadorId) {
+    setElegidosEmpate(new Set())
     setRepescados((prev) => {
       const next = new Set(prev)
       if (next.has(jugadorId)) next.delete(jugadorId)
@@ -700,7 +765,7 @@ function ModalFinalizarFaseSuiza({ ligaId, participantes, minClasificados, onClo
           min="0"
           step="1"
           value={numClasifican}
-          onChange={(e) => setNumClasifican(e.target.value)}
+          onChange={(e) => cambiarNum(e.target.value)}
           className="h-10"
         />
         {numValido && !esPar && <p className="text-destructive text-xs mt-1">Debe ser un número par</p>}
@@ -732,6 +797,60 @@ function ModalFinalizarFaseSuiza({ ligaId, participantes, minClasificados, onClo
               <p className="text-xs text-gray-500 mt-2">
                 Selecciona exactamente {corte.necesitanRepescar} para completar el número elegido
               </p>
+            )}
+          </div>
+        )}
+
+        {corte && hayEmpate && (
+          <div className="bg-orange-50 border border-orange-100 rounded-lg px-3.5 py-3 mt-3 space-y-2">
+            <p className="text-sm font-medium text-orange-800">
+              ⚠️ Empate en el corte: {corte.candidatosZonaGris.length} jugadores con el mismo récord pelean por{' '}
+              {corte.plazasZonaGris} {corte.plazasZonaGris === 1 ? 'plaza' : 'plazas'}.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={modoEmpate === 'extra' ? 'default' : 'outline'}
+                className="flex-1"
+                onClick={() => setModoEmpate('extra')}
+              >
+                Ronda extra
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={modoEmpate === 'elegir' ? 'default' : 'outline'}
+                className="flex-1"
+                onClick={() => setModoEmpate('elegir')}
+              >
+                Elegir yo
+              </Button>
+            </div>
+            {modoEmpate === 'elegir' && (
+              <div className="space-y-1 pt-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Quién clasifica ({elegidosEmpate.size}/{corte.plazasZonaGris})
+                </p>
+                {corte.candidatosZonaGris.map((p) => (
+                  <label key={p.jugador_id} className="flex items-center gap-3 py-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={elegidosEmpate.has(p.jugador_id)}
+                      onChange={() => toggleElegidoEmpate(p.jugador_id)}
+                      disabled={!elegidosEmpate.has(p.jugador_id) && elegidosEmpate.size >= corte.plazasZonaGris}
+                      className="size-4 rounded accent-primary"
+                    />
+                    <span className="flex-1 text-sm font-medium truncate">{p.jugador?.nombre ?? '—'}</span>
+                    <span className="text-xs text-gray-400">{p.victorias}-{p.derrotas}</span>
+                  </label>
+                ))}
+                {!eleccionCompleta && (
+                  <p className="text-xs text-gray-500">
+                    Selecciona exactamente {corte.plazasZonaGris} para poder confirmar
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -775,14 +894,17 @@ function SeccionGestionFase({ ligaId, participantes, ronda, maxDerrotas, maxElim
   const [modalRondaFinal, setModalRondaFinal] = useState(false)
   const [modalFinalizar, setModalFinalizar] = useState(false)
 
-  if (maxEliminados == null) return null
-  if (ronda != null) return null
+  // Only a round that actually has matches blocks the phase management; an
+  // empty round can never be closed and is handled by SeccionRondaActual.
+  if (ronda != null && ronda.partidos.length > 0) return null
 
   const eliminados = participantes.filter((p) => p.estado === 'eliminado')
   const activos = participantes.filter((p) => p.estado === 'activo')
   const hayZonaLimite = activos.some((p) => maxDerrotas != null && p.derrotas === maxDerrotas - 1)
 
-  if (eliminados.length < maxEliminados) return null
+  // Too few active players to form a match also forces the admin to close the phase.
+  const alcanzaMaxEliminados = maxEliminados != null && eliminados.length >= maxEliminados
+  if (!alcanzaMaxEliminados && activos.length >= 4) return null
 
   return (
     <Card>

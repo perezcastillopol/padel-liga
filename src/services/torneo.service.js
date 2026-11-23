@@ -1521,6 +1521,13 @@ export async function generarPreviewRonda(ligaId) {
   const participantes = await getParticipantes(ligaId)
   const activos = participantes.filter((p) => p.estado === 'activo')
 
+  // With fewer than 4 active players no match can be formed: creating the
+  // round anyway would leave an empty round that can never be closed.
+  if (activos.length < 4) {
+    const quedan = activos.length === 1 ? 'Solo queda 1 jugador activo' : `Solo quedan ${activos.length} jugadores activos`
+    throw new Error(`${quedan}: no se puede formar ningún partido. Finaliza la fase suiza.`)
+  }
+
   const { data: ultimaRonda } = await supabase
     .from('torneo_rondas')
     .select('numero')
@@ -1552,6 +1559,60 @@ export async function generarPreviewRonda(ligaId) {
 
   await crearPartidosRonda(ronda.id, ligaId, partidosGenerados, null, { preview: true })
   return getRondaConPartidos(ligaId, ronda.id)
+}
+
+async function contarPartidosRonda(rondaId) {
+  const { count, error } = await supabase
+    .from('torneo_partidos')
+    .select('id', { count: 'exact', head: true })
+    .eq('ronda_id', rondaId)
+  if (error) throw error
+  return count ?? 0
+}
+
+// Deletes the swiss rounds of the league that are not finished ('pendiente' /
+// 'en_curso') and have no matches at all. Such a round can never be closed
+// (rounds only close when their matches get a result), so it would block the
+// phase forever. Called at the start of finalizarFaseSuiza().
+async function eliminarRondasSuizaVacias(ligaId) {
+  const { data: rondas, error } = await supabase
+    .from('torneo_rondas')
+    .select('id')
+    .eq('liga_id', ligaId)
+    .eq('tipo', 'suiza')
+    .in('estado', ['pendiente', 'en_curso'])
+  if (error) throw error
+
+  for (const ronda of rondas ?? []) {
+    if ((await contarPartidosRonda(ronda.id)) > 0) continue
+    const { error: deleteError } = await supabase.from('torneo_rondas').delete().eq('id', ronda.id)
+    if (deleteError) throw deleteError
+  }
+}
+
+// Manually deletes an empty, unfinished swiss round (admin action from the UI).
+// Throws if the round is not swiss, is already finished, or has any match.
+export async function eliminarRondaVacia(ligaId, rondaId) {
+  const { data: ronda, error } = await supabase
+    .from('torneo_rondas')
+    .select('id, tipo, estado')
+    .eq('id', rondaId)
+    .eq('liga_id', ligaId)
+    .single()
+  if (error) throw error
+
+  if (ronda.tipo !== 'suiza') {
+    throw new Error('Solo se pueden eliminar rondas de fase suiza')
+  }
+  if (ronda.estado === 'finalizada') {
+    throw new Error('No se puede eliminar una ronda ya finalizada')
+  }
+  if ((await contarPartidosRonda(rondaId)) > 0) {
+    throw new Error('No se puede eliminar una ronda que tiene partidos')
+  }
+
+  const { error: deleteError } = await supabase.from('torneo_rondas').delete().eq('id', rondaId)
+  if (deleteError) throw deleteError
 }
 
 // Confirma una ronda en preview: la hace visible para todos y jugable.
@@ -1676,7 +1737,16 @@ export async function repetirSorteo(ligaId, rondaId) {
 // quién clasifica, quién queda eliminado y si hay un empate justo en el corte
 // de los activos que debería resolverse en una ronda extra aparte (esos
 // jugadores no entran ni en clasificados ni en eliminados).
-export function calcularCorteFinalSuiza(participantes, numClasifican, repescadosIds = new Set()) {
+// Si hay empate en el corte, el admin puede en cambio decidir él mismo quién
+// clasifica: elegidosZonaGrisIds (Set de jugador_id) con exactamente
+// plazasZonaGris jugadores del grupo empatado (candidatosZonaGris) → esos
+// clasifican, el resto del empate queda eliminado y zonaGris queda vacía.
+export function calcularCorteFinalSuiza(
+  participantes,
+  numClasifican,
+  repescadosIds = new Set(),
+  elegidosZonaGrisIds = new Set()
+) {
   const clasificadosExistentes = participantes.filter((p) => p.estado === 'clasificado')
   const activosOrdenados = [...participantes.filter((p) => p.estado === 'activo')].sort((a, b) => {
     if (b.victorias !== a.victorias) return b.victorias - a.victorias
@@ -1705,14 +1775,29 @@ export function calcularCorteFinalSuiza(participantes, numClasifican, repescados
     while (corteFin < activosOrdenados.length && recordDe(activosOrdenados[corteFin]) === recordCorte) corteFin++
   }
 
-  const activosClasificados = activosOrdenados.slice(0, corteInicio)
-  const zonaGris = activosOrdenados.slice(corteInicio, corteFin)
-  const activosEliminados = activosOrdenados.slice(corteFin)
+  let activosClasificados = activosOrdenados.slice(0, corteInicio)
+  let zonaGris = activosOrdenados.slice(corteInicio, corteFin)
+  let activosEliminados = activosOrdenados.slice(corteFin)
+
+  const candidatosZonaGris = zonaGris
+  const plazasZonaGris = slots - corteInicio
+
+  if (candidatosZonaGris.length > 0) {
+    const elegidos = candidatosZonaGris.filter((p) => elegidosZonaGrisIds.has(p.jugador_id))
+    if (elegidos.length === plazasZonaGris) {
+      const noElegidos = candidatosZonaGris.filter((p) => !elegidosZonaGrisIds.has(p.jugador_id))
+      activosClasificados = [...activosClasificados, ...elegidos]
+      activosEliminados = [...noElegidos, ...activosEliminados]
+      zonaGris = []
+    }
+  }
 
   return {
     clasificados: [...clasificadosExistentes, ...activosClasificados, ...repescados],
     eliminados: [...eliminadosNoRepescados, ...activosEliminados],
     zonaGris,
+    candidatosZonaGris,
+    plazasZonaGris,
     necesitanRepescar,
     eliminadosOrdenados,
   }
@@ -1741,6 +1826,10 @@ async function obtenerSiguienteNumeroRonda(ligaId) {
 // la ronda extra con todos ellos (sin restricción de repetición); si no,
 // pasa directamente a playoff.
 export async function finalizarFaseSuiza(ligaId, clasificadosIds, eliminadosIds) {
+  // An empty swiss round left over (e.g. created with < 4 active players)
+  // must not survive the phase change.
+  await eliminarRondasSuizaVacias(ligaId)
+
   const participantes = await getParticipantes(ligaId)
   const porJugadorId = new Map(participantes.map((p) => [p.jugador_id, p]))
 
